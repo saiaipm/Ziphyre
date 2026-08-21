@@ -42,6 +42,13 @@ export function getSetupState(): SetupItem[] {
       present: Boolean(process.env.SEED_ADMIN_EMAIL),
       blocks: "Organization bootstrap.",
     },
+    {
+      key: "settings_encryption",
+      label: "Settings encryption key",
+      description: "Encrypts each organization's own AI provider key at rest.",
+      present: Boolean(process.env.SETTINGS_ENCRYPTION_KEY),
+      blocks: "Saving a screening provider, and requirement extraction.",
+    },
   ];
 }
 

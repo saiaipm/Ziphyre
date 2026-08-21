@@ -37,7 +37,7 @@ The build context is one person with AI coding assistance and no infrastructure 
 | **Client data** | TanStack Query | Standard for server-state in React. Handles the refresh behaviour **FR-30** needs |
 | **UI** | Tailwind CSS + shadcn/ui | shadcn components are copied into the repo rather than imported, so AI tools can read and modify them directly |
 | **Validation** | Zod | One schema definition reused for form validation, structured AI output, and export shaping |
-| **AI access** | Vercel AI SDK | Provider-agnostic interface covering Claude, Gemini and OpenAI — exactly the three **FR-81** requires — with structured-output support |
+| **AI access** | Vercel AI SDK | Provider-agnostic interface covering OpenAI, Google Gemini and NVIDIA NIM — exactly the three **FR-81** requires — with structured-output support. NIM speaks the OpenAI wire format, so it reuses that adapter with a different base URL |
 | **Spreadsheet export** | SheetJS | CSV and Excel from one library (**FR-71**) |
 | **Document export** | React-PDF | PDF generated from React components, so the export layout is written the same way as the UI (**FR-72**) |
 
@@ -210,7 +210,7 @@ The heart of the product. Five stages per application.
 
 ```
 1. Fetch the CV          Drive or Storage
-2. Extract content       PDF/DOCX → text, or pass the document to the model directly
+2. Extract content       PDF/DOCX → text (always; see below)
 3. Assemble the prompt   JD version + requirement list + form answers + CV
 4. Call the provider     structured output, schema-validated
 5. Persist               one new screening row, never an update
@@ -218,9 +218,15 @@ The heart of the product. Five stages per application.
 
 ### Content extraction
 
-**Decision: pass the document to the model directly where the provider supports it; fall back to text extraction.**
+**Decision: always extract text first, then send text to the model. One pipeline, no multimodal path.**
 
-Claude and Gemini both accept PDFs natively and read layout — which matters, because CVs are layout-heavy documents and text extraction flattens two-column resumes into nonsense. Fall back to text extraction for DOC/DOCX and for providers without document support.
+*Revised 22 Aug 2026. The earlier decision was to send PDFs natively to the model where supported, falling back to extraction. The provider list changed and that reversed the trade-off.*
+
+**Why:** one of the three supported models, **GPT-OSS-20B, has no vision at all**. A multimodal-primary design would mean the open-weight fallback silently could not screen anything — the worst kind of failure, because it only appears when the fallback is actually needed. A uniform text pipeline is also cheaper (no image tokens), faster, and one code path instead of two.
+
+**Rule — do not reintroduce a multimodal path without re-checking this.** Sending PDFs directly to a vision-capable model looks like a free accuracy upgrade and is the obvious "improvement" someone will reach for later. It breaks GPT-OSS-20B, and it breaks the assumption that all three providers are interchangeable.
+
+**The cost of this choice, stated honestly:** text extraction can interleave two-column CV layouts into nonsense, and that failure is silent — the model receives plausible-looking garbage rather than an error. This is a *parsing* problem, not a model problem, and the fix is a better extraction library, never a different model. The seven CA test CVs must be checked for it during M2 (see §12).
 
 **Detecting an unscreenable CV (FR-47).** A PDF that yields almost no extractable text is a scanned image. This check must run *before* the provider call, so the failure is cheap and its reason is specific — "we couldn't read this file, it may be a scanned image" rather than a generic model error. All seven current test CVs parse cleanly, so this path needs the deliberately awkward file the functional spec's rollout plan calls for.
 
@@ -234,11 +240,34 @@ The schema covers: five component ratings (0–10), a per-must-have verdict with
 
 ### Provider abstraction
 
-BYOK across Claude, Gemini and OpenAI (**FR-81**). The AI SDK covers all three behind one interface.
+BYOK across three providers (**FR-81**), one model each. The AI SDK covers all three behind one interface; NVIDIA NIM is OpenAI-wire-compatible, so it reuses that adapter with `baseURL` pointed at `integrate.api.nvidia.com/v1`.
 
-- **Default: Claude Sonnet 5** (`claude-sonnet-5`) — the quality/cost balance suits per-application screening. `claude-opus-5` is the option where judgement quality matters more than cost.
+| Provider | Model | Why it's on the list |
+|---|---|---|
+| OpenAI | `gpt-4o-mini` — GPT-4o mini | Fast, inexpensive, reliable structured output |
+| Google Gemini | `gemini-2.5-flash-lite` — Gemini 2.5 Flash-Lite | Lowest latency and cost of the three |
+| NVIDIA NIM | `openai/gpt-oss-20b` — GPT-OSS-20B | Open-weight fallback. **Text only — no vision** |
+
+**Deliberately the cheap tier, not the capable tier.** Screening is extraction plus a bounded judgement, run once per application, potentially hundreds of times per posting. Frontier reasoning models are built for multi-step problems this isn't; they would multiply cost and latency without ranking candidates better. If a cheap model turns out to score badly, the honest test is the seven CA CVs against the recorded baseline — not a pricing-page comparison.
+
+**The real risk with cheap models is not stupidity, it is inconsistency** — the same CV scoring differently across runs, and arithmetic over messy date strings going quietly wrong (**FR-46**'s declared-versus-evidenced check is exactly this). Both are what the M2 baseline comparison is designed to catch.
+
+- Models are shown by official name, never raw API slug (**FR-81**).
 - Provider and model are recorded on every screening row (**FR-49**), because scores from different models are not comparable and the product must not pretend otherwise.
-- **FR-82**: switching provider never triggers a rescreen.
+- **FR-82**: adding, removing or reordering providers never triggers a rescreen.
+
+### Automatic fallback across providers
+
+**Decision: an organization configures several providers in an explicit order; screening walks the chain until one succeeds (FR-85).**
+
+`provider_settings` holds one row per provider per organization, ordered by `priority` (lowest tried first). `runWithFallback` walks that chain and **always reports which provider actually produced the result** — that return value is not bookkeeping, it is what keeps FR-49 honest.
+
+**The cost of this choice, stated plainly.** Without fallback, every score in a pipeline came from the same model and scores were directly comparable. With fallback, a transient outage means candidate A is scored by Gemini and candidate B by GPT-OSS-20B, and both land in the same ranked list looking equivalent. That is a real degradation of comparability, accepted deliberately in exchange for screening that keeps working during an outage.
+
+**Two things follow, and neither is optional:**
+
+1. **A fallback is never silent** (**FR-86**). Wherever a fallback result is used, the interface says so. An admin who chose one model and quietly received another has been misled about how their candidates were judged.
+2. **A pipeline containing scores from more than one model must surface that** when the pipeline UI is built at M4. The dashboard must not present mixed-model scores as a clean ranking — the same reasoning as JD versioning, arriving through a different door.
 
 ### Prompt versioning
 
@@ -371,6 +400,8 @@ Proportionate to a solo build. Test what is expensive to get wrong:
 | Must-have evaluation | **FR-43** determines what Meera sees first |
 | Deduplication | **FR-36** — the constraint that stops duplicate candidates |
 | Unscreenable detection | **FR-47** — the path most likely to be silently wrong |
+| Two-column CV extraction | Text extraction can interleave columns into plausible-looking nonsense. The model receives garbage and scores it confidently, with no error anywhere. Check the seven CA CVs by eye at M2 — see §7 |
+| Same CV, twice | Cheap models risk inconsistency more than incapability. Identical input should give an identical score |
 | Filter behaviour with Not-provided values | **FR-68** — where candidates disappear silently |
 | Export contents | **FR-71**–**FR-73** — what leaves the building |
 
@@ -443,6 +474,8 @@ Once the first implementation exists, this document is rewritten as `CodeContext
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 6 | 22 Aug 2026 | **Automatic fallback across providers** (**FR-85/86**). An organization now configures several providers in an explicit order rather than one; screening walks the chain until one succeeds. Previously `organization_id` was the primary key of `provider_settings`, so saving a second provider silently replaced the first — the admin appeared to have three configured while only the last was stored. The comparability cost is recorded rather than glossed: mixed-model scores in one pipeline are a real degradation, accepted for resilience, and must be surfaced in the M4 pipeline UI. Gemini 2.5 models replaced with the current 3.5–3.7 line after Google retired 2.5 for generation |
+| Draft 5 | 22 Aug 2026 | Provider list settled: **OpenAI (GPT-4o mini), Google Gemini (2.5 Flash-Lite), NVIDIA NIM (GPT-OSS-20B)**. Claude dropped at the user's direction; OpenRouter considered and rejected on rate limits and reliability. Cheap tier chosen deliberately over frontier models, with the reasoning recorded. **Content extraction reversed**: always extract text, never send PDFs natively — GPT-OSS-20B has no vision, so a multimodal-primary design would have left the open-weight fallback silently unable to screen anything. The two-column-layout cost of that choice is stated and added to the M2 test list |
 | Draft 4 | 21 Aug 2026 | Recorded a real framework gotcha, discovered building the M0 dark-mode toggle: this Next.js version cannot run `next-themes` (or any script-injection-based flash-prevention library) because its own docs say React-rendered `<script>` tags don't execute on the client. Added to §9 with the correct pattern — a real inline script in the root layout's `<head>`, per the framework's own guide — and flagged in §16 as the first entry the eventual Non-Obvious Gotchas list inherits |
 | Draft 3 | 16 Aug 2026 | Workspace renamed Organization and given a profile — legal name, website, industry, size, location, timezone, currency, logo. Timezone and currency flagged as load-bearing for CTC and dates. Membership introduced so users belong to organizations through a join carrying role and invite state; role constrained to `admin` until the permission layer lands. Organization creation restricted to a seed-admin email; no membership means no access. Closes the organization-creation open question |
 | Draft 2 | 16 Aug 2026 | CV storage revised: Ziphyre keeps a working copy of every CV in Storage while form uploads also remain in the admin's Drive — two copies, different owners, different lifespans. Retention set at six months from posting close, deleting the CV and personal data while retaining anonymised scores, with a 30-day warning. Closes the retention open question |

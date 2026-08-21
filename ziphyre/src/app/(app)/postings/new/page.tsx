@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
-import { NotBuiltYet } from "@/components/shell/not-built-yet";
+import { NewPostingForm } from "./new-posting-form";
 
 export const metadata: Metadata = { title: "New posting" };
 
 export default function NewPostingPage() {
   return (
-    <NotBuiltYet
-      title="New posting"
-      milestone="M1"
-      summary="Name the hiring drive, add its openings, attach a job description to each, then review the requirements Ziphyre pulls out and mark what's non-negotiable."
-    />
+    <div className="max-w-2xl space-y-8">
+      <div>
+        <h1 className="text-[28px] leading-tight font-semibold">
+          New posting
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Name the hiring drive, then set up its first opening. You can add
+          more openings once this one is created.
+        </p>
+      </div>
+      <NewPostingForm />
+    </div>
   );
 }

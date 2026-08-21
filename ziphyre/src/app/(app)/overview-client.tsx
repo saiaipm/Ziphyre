@@ -2,20 +2,27 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Inbox, ArrowRight, AlertTriangle } from "lucide-react";
+import {
+  Plus,
+  Inbox,
+  ArrowRight,
+  AlertTriangle,
+  FileWarning,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { seedPostings, type SeedPosting, type SeedOpening } from "@/lib/seed";
+import type { PostingSummary } from "@/lib/postings";
 
-type Props = { postings: SeedPosting[] };
+type Props = { postings: PostingSummary[] };
 
 export function OverviewClient({ postings }: Props) {
   const [preview, setPreview] = useState(false);
-  const data = preview ? seedPostings : postings;
 
+  const data = preview ? seedPostings : postings;
   const open = data.filter((p) => p.status === "open");
   const closed = data.filter((p) => p.status === "closed");
 
@@ -65,18 +72,26 @@ export function OverviewClient({ postings }: Props) {
         <div className="space-y-8">
           {open.length > 0 && (
             <section className="space-y-3">
-              {open.map((p) => (
-                <PostingCard key={p.id} posting={p} />
-              ))}
+              {open.map((p) =>
+                preview ? (
+                  <SamplePostingCard key={p.id} posting={p as SeedPosting} />
+                ) : (
+                  <RealPostingCard key={p.id} posting={p as PostingSummary} />
+                ),
+              )}
             </section>
           )}
 
           {closed.length > 0 && (
             <section className="space-y-3">
               <h2 className="label-meta">Closed</h2>
-              {closed.map((p) => (
-                <PostingCard key={p.id} posting={p} />
-              ))}
+              {closed.map((p) =>
+                preview ? (
+                  <SamplePostingCard key={p.id} posting={p as SeedPosting} />
+                ) : (
+                  <RealPostingCard key={p.id} posting={p as PostingSummary} />
+                ),
+              )}
             </section>
           )}
         </div>
@@ -108,7 +123,93 @@ function EmptyState() {
   );
 }
 
-function PostingCard({ posting }: { posting: SeedPosting }) {
+// ---------------------------------------------------------------------------
+// Real data — no application table until M2/M4, so what's meaningful right
+// now is setup completeness (JD attached, requirements marked), not pipeline
+// counts. Once intake and screening land, this card gains the same stats
+// the sample card already shows.
+// ---------------------------------------------------------------------------
+
+function RealPostingCard({ posting }: { posting: PostingSummary }) {
+  const isClosed = posting.status === "closed";
+
+  return (
+    <article
+      className={cn(
+        "overflow-hidden rounded-lg border border-border bg-card",
+        isClosed && "opacity-70",
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-divider px-5 py-3.5">
+        <Link
+          href={`/postings/${posting.id}`}
+          className="flex items-center gap-2.5 hover:underline"
+        >
+          <h3 className="text-sm font-semibold">{posting.name}</h3>
+          {isClosed && (
+            <Badge
+              variant="secondary"
+              className="rounded-full bg-fit-rejected-bg px-2 py-0 text-[11px] font-medium text-fit-rejected"
+            >
+              Closed
+            </Badge>
+          )}
+        </Link>
+        <span className="text-xs text-muted-foreground">
+          {posting.openings.length}{" "}
+          {posting.openings.length === 1 ? "opening" : "openings"}
+        </span>
+      </div>
+
+      <ul className="divide-y divide-divider">
+        {posting.openings.map((o) => (
+          <li key={o.id}>
+            <Link
+              href={`/postings/${posting.id}/openings/${o.id}`}
+              className="elev-hover flex flex-wrap items-center justify-between gap-4 px-5 py-4 hover:bg-muted/40"
+            >
+              <div className="min-w-[180px]">
+                <p className="text-sm font-medium">{o.title}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {o.workLocation}
+                </p>
+              </div>
+
+              {!o.hasJd ? (
+                <span className="flex items-center gap-1.5 text-sm text-fit-review">
+                  <FileWarning className="size-3.5" aria-hidden />
+                  No job description
+                </span>
+              ) : o.requirementCount === 0 ? (
+                <span className="text-sm text-muted-foreground">
+                  No requirements set
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  {o.mustHaveCount} must-have
+                  {o.mustHaveCount === 1 ? "" : "s"} · {o.requirementCount}{" "}
+                  total
+                </span>
+              )}
+
+              <ArrowRight
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sample data — application-stage counts, exactly what this card will show
+// for real postings once M2 (screening) and M4 (pipeline) exist.
+// ---------------------------------------------------------------------------
+
+function SamplePostingCard({ posting }: { posting: SeedPosting }) {
   const isClosed = posting.status === "closed";
 
   return (
@@ -138,23 +239,20 @@ function PostingCard({ posting }: { posting: SeedPosting }) {
 
       <ul className="divide-y divide-divider">
         {posting.openings.map((o) => (
-          <OpeningRow key={o.id} opening={o} />
+          <SampleOpeningRow key={o.id} opening={o} />
         ))}
       </ul>
     </article>
   );
 }
 
-function OpeningRow({ opening }: { opening: SeedOpening }) {
+function SampleOpeningRow({ opening }: { opening: SeedOpening }) {
   const { counts } = opening;
   const untouched = counts.applied === 0;
 
   return (
     <li>
-      <Link
-        href={`/openings/${opening.id}`}
-        className="elev-hover flex flex-wrap items-center justify-between gap-4 px-5 py-4 hover:bg-muted/40"
-      >
+      <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
         <div className="min-w-[180px]">
           <p className="text-sm font-medium">{opening.title}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -188,12 +286,7 @@ function OpeningRow({ opening }: { opening: SeedOpening }) {
             )}
           </div>
         )}
-
-        <ArrowRight
-          className="size-4 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
-      </Link>
+      </div>
     </li>
   );
 }
