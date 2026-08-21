@@ -311,6 +311,20 @@ There is no candidate-initiated deletion route, because no candidate-facing surf
 
 **Nothing organization-scoped is cached at the CDN.** Candidate data is private, per-organization, and changes constantly. Caching it is the failure mode where one customer sees another's pipeline.
 
+### Gotcha: this Next.js version cannot use next-themes (or similar script-injection libraries)
+
+**Rule — do not reinstall `next-themes`, or reach for any library that prevents flash-of-wrong-content by rendering a `<script>` tag from a React component.**
+
+This Next.js version's own shipped documentation (`node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md`) states plainly that scripts rendered by a React component do not execute on the client — the exact mechanism `next-themes`' `ThemeProvider` depends on to set the theme before first paint. Installing it produces no build error. It fails silently: a console warning, an intermittent-looking hydration issue, and — because of how React's Strict Mode dev remount clears attributes it doesn't manage from JSX — behavior that looks like a flaky UI bug rather than a fundamentally incompatible dependency. Diagnosing it cost real time; it should cost nothing for whoever hits this next.
+
+**The correct pattern for this Next version**, used for dark mode (`src/lib/theme-script.ts`, `src/app/layout.tsx`, `src/components/shell/theme-toggle.tsx`):
+
+1. A real inline `<script>` element, written directly in the root layout's `<head>` via `dangerouslySetInnerHTML` — not rendered as a side effect of a component mounting. It runs synchronously during HTML parsing, before React is involved at all.
+2. State is read from `localStorage` with a lazy `useState` initializer, so React's first render already agrees with what the script painted.
+3. Anything that must survive a dev-mode Strict Mode remount is re-applied in a `useLayoutEffect`, per the same guide's "Re-applying attributes in development" section.
+
+**How to apply this rule to other flash-of-wrong-content problems** (locale formatting, persisted UI state, anything reading `localStorage` before paint): follow the same three-step pattern rather than reaching for a convenience library that predates this Next.js version's behavior. Check `node_modules/next/dist/docs/` for the relevant guide before writing the code — this is exactly what `ziphyre/AGENTS.md` already instructs, and this gotcha is the reason that instruction is there.
+
 ---
 
 ## 10. Exports
@@ -420,7 +434,8 @@ Once the first implementation exists, this document is rewritten as `CodeContext
 | §4 Multi-tenancy | Auth & Permissions — with the actual client rules |
 | §6–7 Jobs and screening | Extension points, with canonical files to copy from |
 | §9 Rendering | Routing & Rendering, with per-route decisions |
-| Everything | A Canonical File Index and a Non-Obvious Gotchas list — neither of which can be written before the gotchas have been hit |
+| §9 next-themes gotcha | First entry in the Non-Obvious Gotchas list |
+| Everything | A Canonical File Index and the rest of the Non-Obvious Gotchas list — neither can be written before the gotchas have been hit |
 
 ---
 
@@ -428,6 +443,7 @@ Once the first implementation exists, this document is rewritten as `CodeContext
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 4 | 21 Aug 2026 | Recorded a real framework gotcha, discovered building the M0 dark-mode toggle: this Next.js version cannot run `next-themes` (or any script-injection-based flash-prevention library) because its own docs say React-rendered `<script>` tags don't execute on the client. Added to §9 with the correct pattern — a real inline script in the root layout's `<head>`, per the framework's own guide — and flagged in §16 as the first entry the eventual Non-Obvious Gotchas list inherits |
 | Draft 3 | 16 Aug 2026 | Workspace renamed Organization and given a profile — legal name, website, industry, size, location, timezone, currency, logo. Timezone and currency flagged as load-bearing for CTC and dates. Membership introduced so users belong to organizations through a join carrying role and invite state; role constrained to `admin` until the permission layer lands. Organization creation restricted to a seed-admin email; no membership means no access. Closes the organization-creation open question |
 | Draft 2 | 16 Aug 2026 | CV storage revised: Ziphyre keeps a working copy of every CV in Storage while form uploads also remain in the admin's Drive — two copies, different owners, different lifespans. Retention set at six months from posting close, deleting the CV and personal data while retaining anonymised scores, with a 30-day warning. Closes the retention open question |
 | Draft 1 | 16 Aug 2026 | First tech decisions document. Written in place of `CodeContext.md`, which cannot exist before code does. Stack chosen for a solo builder using AI coding tools, with no infrastructure constraints. Two additions beyond the functional spec, both flagged: prompt versioning for score comparability, and a recommendation on error monitoring as distinct from the excluded product analytics |
