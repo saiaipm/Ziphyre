@@ -1,0 +1,44 @@
+# ==============================================================
+# Candidate personal data — NEVER COMMIT
+#
+# Real applicants' CVs and the assessments written about them.
+# They applied for a job, not to appear in a repository.
+# Removing these lines publishes seven people's names, phone
+# numbers and salary history.
+# ==============================================================
+CA Role Sample Resumes/
+Testing/baseline-ranking-CA-role.md
+
+# Real job descriptions — carry the employer's identity and internal detail.
+JDs/
+
+# --- Environment: real credentials ---------------------------
+.env
+.env.*
+!ziphyre/.env.local.example
+
+# MCP server config — carries a live API key in its headers.
+# Committed as .mcp.json.example instead.
+.mcp.json
+
+# --- Dependencies and build output ---------------------------
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# --- Logs ----------------------------------------------------
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# --- OS and editor -------------------------------------------
+.DS_Store
+.vscode/
+.idea/
+*.pem
+
+# --- Local tooling -------------------------------------------
+.claude/settings.local.json

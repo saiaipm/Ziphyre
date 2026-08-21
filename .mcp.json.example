@@ -1,0 +1,12 @@
+{
+  "_comment": "Copy to .mcp.json and fill in your own key. .mcp.json is gitignored because this header is a live credential.",
+  "mcpServers": {
+    "stitch": {
+      "type": "http",
+      "url": "https://stitch.googleapis.com/mcp",
+      "headers": {
+        "X-Goog-Api-Key": "YOUR_STITCH_API_KEY"
+      }
+    }
+  }
+}

@@ -1,0 +1,237 @@
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SIZE_BANDS, INDUSTRIES, CURRENCIES, TIMEZONES } from "@/lib/seed";
+import { saveOrganization } from "./actions";
+
+export type OrgForm = {
+  name: string;
+  legalName: string;
+  website: string;
+  industry: string;
+  sizeBand: string;
+  primaryLocation: string;
+  timezone: string;
+  currency: string;
+};
+
+export function OrganizationForm({ initial }: { initial: OrgForm }) {
+  const [form, setForm] = useState<OrgForm>(initial);
+  const [saving, setSaving] = useState(false);
+
+  const set = <K extends keyof OrgForm>(key: K, value: OrgForm[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  async function onSave() {
+    if (!form.name.trim()) {
+      toast.error("Organization name is required.");
+      return;
+    }
+    setSaving(true);
+    const result = await saveOrganization(form);
+    setSaving(false);
+
+    if (result.ok) {
+      toast.success("Organization saved");
+    } else {
+      toast.error("Couldn't save", { description: result.error });
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Section
+        title="Identity"
+        description="How your business appears in Ziphyre."
+      >
+        <Field
+          label="Organization name"
+          hint="What you'll recognise in the interface."
+          required
+        >
+          <Input
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+            placeholder="Acme Media"
+          />
+        </Field>
+
+        <Field label="Legal name" hint="If it differs from the above.">
+          <Input
+            value={form.legalName}
+            onChange={(e) => set("legalName", e.target.value)}
+            placeholder="Acme Media Private Limited"
+          />
+        </Field>
+
+        <Field label="Website">
+          <Input
+            type="url"
+            value={form.website}
+            onChange={(e) => set("website", e.target.value)}
+            placeholder="https://acme.example"
+          />
+        </Field>
+      </Section>
+
+      <Section
+        title="Profile"
+        description="Context that helps screening understand your business."
+      >
+        <Field label="Industry">
+          <Select
+            value={form.industry}
+            onValueChange={(v) => set("industry", v)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select an industry" />
+            </SelectTrigger>
+            <SelectContent>
+              {INDUSTRIES.map((i) => (
+                <SelectItem key={i} value={i}>
+                  {i}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field label="Company size">
+          <Select
+            value={form.sizeBand}
+            onValueChange={(v) => set("sizeBand", v)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Number of employees" />
+            </SelectTrigger>
+            <SelectContent>
+              {SIZE_BANDS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s} employees
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field label="Primary location">
+          <Input
+            value={form.primaryLocation}
+            onChange={(e) => set("primaryLocation", e.target.value)}
+            placeholder="Hyderabad, India"
+          />
+        </Field>
+      </Section>
+
+      <Section
+        title="Regional"
+        description="Applied to every date and salary figure in the product."
+      >
+        <Field label="Timezone">
+          <Select
+            value={form.timezone}
+            onValueChange={(v) => set("timezone", v)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TIMEZONES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t.replace("_", " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field
+          label="Currency"
+          hint="Used for current and expected salary on every application."
+        >
+          <Select
+            value={form.currency}
+            onValueChange={(v) => set("currency", v)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCIES.map((c) => (
+                <SelectItem key={c.code} value={c.code}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </Section>
+
+      <div className="flex items-center gap-3">
+        <Button onClick={onSave} disabled={saving}>
+          {saving ? "Saving…" : "Save changes"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-border bg-card">
+      <div className="border-b border-divider px-6 py-4">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="space-y-5 px-6 py-5">{children}</div>
+    </section>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  required,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-1.5 sm:grid-cols-[200px_1fr] sm:items-start sm:gap-5">
+      <div className="sm:pt-2">
+        <Label className="text-sm font-medium">
+          {label}
+          {required && <span className="ml-0.5 text-destructive">*</span>}
+        </Label>
+      </div>
+      <div>
+        {children}
+        {hint && (
+          <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>
+        )}
+      </div>
+    </div>
+  );
+}
