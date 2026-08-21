@@ -142,7 +142,7 @@ candidate
 application
   id                        uuid pk
   organization_id              uuid not null
-  opening_id                uuid not null references opening(id)
+  opening_id                uuid not null references opening(id) on delete cascade  -- FR-84
   candidate_id              uuid not null references candidate(id)
   source                    text not null check (source in ('form','manual'))
   form_answers              jsonb                    -- absent key = never asked
@@ -173,7 +173,7 @@ application
 unmatched_submission                    -- FR-28
   id                      uuid pk
   organization_id            uuid not null
-  posting_id              uuid not null references posting(id)
+  posting_id              uuid not null references posting(id) on delete cascade  -- FR-84
   claimed_option          text
   raw_answers             jsonb not null
   cv_drive_file_id        text
@@ -184,7 +184,7 @@ unmatched_submission                    -- FR-28
 screening                               -- APPEND ONLY
   id                       uuid pk
   organization_id             uuid not null
-  application_id           uuid not null references application(id)
+  application_id           uuid not null references application(id) on delete cascade  -- FR-84
   jd_version_id            uuid not null references jd_version(id)
   prompt_version           text not null
   provider                 text not null
@@ -206,7 +206,7 @@ screening                               -- APPEND ONLY
 stage_event                             -- APPEND ONLY
   id              uuid pk
   organization_id    uuid not null
-  application_id  uuid not null references application(id)
+  application_id  uuid not null references application(id) on delete cascade  -- FR-84
   from_stage      text
   to_stage        text not null
   actor_kind      text not null check (actor_kind in ('admin','system'))
@@ -247,6 +247,8 @@ job
 **Resolution:** keep the history append-only *and* denormalise the current values onto `application` — `current_stage`, `current_screening_id`, `screening_status`.
 
 **Rule.** The insert into the history table and the update of the pointer happen in one transaction. Never one without the other. A pointer that disagrees with its history is the worst failure this schema can produce, because both look plausible.
+
+**Append-only means no `UPDATE`, not "can never be removed."** `screening` and `stage_event` cascade-delete with their application when an admin deletes a whole posting (**FR-84**) — that is a deliberate, confirmed, explicit action with its own confirmation dialog, a different thing entirely from a row being quietly edited or dropped in the ordinary course of using the product.
 
 ### 2.3 Indexes
 
@@ -669,6 +671,7 @@ Sequenced so screening quality is proven before any Google work is built.
 | FR-71 – FR-75 | §10 Exports |
 | FR-76 – FR-80 | §8 Routes — `/` |
 | FR-81 – FR-83 | §12 Secrets, `provider_settings` |
+| FR-84 | §2.2, §2.1 cascade chain (`opening → application → screening`/`stage_event`, `posting → unmatched_submission`) |
 
 ---
 
@@ -685,5 +688,6 @@ Sequenced so screening quality is proven before any Google work is built.
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 3 | 21 Aug 2026 | Posting deletion confirmed as an actual product decision (**FR-84**, functional spec) rather than an unconfirmed assumption. Fixed a real schema gap this surfaced: `application.opening_id`, `screening.application_id`, `stage_event.application_id` and `unmatched_submission.posting_id` had no cascade — deleting a posting as specified would have failed on a foreign-key violation rather than actually deleting anything. All four now cascade |
 | Draft 2 | 16 Aug 2026 | Workspace renamed Organization throughout, with profile fields (legal name, website, industry, size, location, timezone, currency, logo) and its own settings screen. Membership split out of `app_user` so the permission layer lands without touching every table — role and invite columns present, role constrained to `admin` for now. Organization bootstrap decided: a seed-admin email creates the org on first sign-in, everyone else is refused until invited. Closes the M0 open question |
 | Draft 1 | 16 Aug 2026 | First tech spec, from functional spec Draft 2 and TechDecisions Draft 2. Three decisions beyond the functional spec, all marked: append-only history with a denormalised current pointer; reassignment collision refused rather than merged; must-have verdicts required per requirement id with a missing entry treated as a validation failure rather than an implied pass |

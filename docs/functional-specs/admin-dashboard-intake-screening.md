@@ -134,6 +134,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 **FR-10** Meera can close a posting. Closing stops new applications being accepted; every existing application stays fully workable.
 **FR-11** A closed posting can be reopened.
 **FR-12** Meera can edit an opening's title, location and job description at any time.
+**FR-84** Meera can permanently delete a posting. Deletion requires an explicit confirmation naming the posting and the number of candidates whose data would be removed. An opening cannot be deleted on its own — only closed with its posting (functional spec §11).
 
 ### Requirements and must-haves
 
@@ -346,6 +347,10 @@ Validated against the seven real Chartered Accountant applicants and the human r
 | Close confirmation | Close this posting? New applications will stop arriving. Everyone already in the pipeline stays exactly as they are. |
 | Closed badge | Closed |
 | Reopen button | Reopen posting |
+| Delete posting button | Delete posting |
+| Delete confirmation | Delete "{posting name}" permanently? This removes {n} candidates' applications, CVs and scores. This cannot be undone. |
+| Delete confirmation (no applications) | Delete "{posting name}"? No one has applied yet — nothing else is affected. |
+| Delete confirm button | Delete permanently |
 
 ### Requirements
 
@@ -574,7 +579,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 ### Create, edit, delete
 
-- **Postings** — create, rename, close, reopen. Deleting a posting removes its applications and requires explicit confirmation naming how many candidates would be lost.
+- **Postings** — create, rename, close, reopen, delete. Deleting a posting removes its applications and requires explicit confirmation naming how many candidates would be lost — **FR-84**.
 - **Openings** — add to a posting, edit title, location and job description. An opening with applications cannot be deleted; it can only be closed with its posting.
 - **Requirements** — add, edit, delete, reorder, re-mark, at any time. Changing them offers a rescreen.
 - **Applications** — cannot be deleted. They can be rejected, held, or reassigned. This is deliberate: ProductContext treats losing a candidate as a defect.
@@ -708,6 +713,7 @@ Posting · Opening · Application · Candidate · Stage · Screening score · Sc
 - [ ] Attaching a job description produces a proposed requirement list that can be edited, deleted from and added to — **FR-13, FR-14**
 - [ ] Requirements can be marked Must-have or Preferred, and default to Preferred — **FR-15**
 - [ ] Selecting a form whose openings don't match the posting names the specific differences — **FR-27**
+- [ ] Deleting a posting with applications requires confirmation naming the candidate count; deleting an empty one does not claim candidates are affected — **FR-84**
 
 ### Intake
 
@@ -795,5 +801,6 @@ No dark launch and no admin-only preview: there is no existing product to hide t
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 3 | 21 Aug 2026 | **FR-84** added: Meera can permanently delete a posting, with a confirmation naming the candidate count affected. Confirms as a real product decision what was previously only a tech-spec assumption. Pause/lifecycle states beyond open, closed and deleted were considered and explicitly dropped — closing remains the only way to stop a posting short of deletion |
 | Draft 2 | 16 Aug 2026 | Analytics removed entirely from v1. §12 now states no tracking or instrumentation of any kind, with stage-change history and score provenance explicitly retained as product functionality rather than telemetry. Added to out-of-scope; deferred to Roadmap Theme C. Success measures confirmed as directly observable, needing no instrumentation |
 | Draft 1 | 15 Aug 2026 | First functional spec, from PN-001 and ProductContext v1.1. Nine decisions taken during clarification: requirements proposed from the JD and confirmed by the admin; JD Fit redefined as responsibilities match to remove double-counting; five stages retained with New → Screened as a processing transition; unscreenable CVs held at New with a manual-review flag; relocation question added to the form template and folded into the Location component; Google account connected once with form selection from a list; home overview added for Rahul; disposition optional from a quick-pick list; desktop for working surfaces with a phone-readable overview |
