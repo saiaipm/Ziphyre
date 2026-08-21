@@ -31,7 +31,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className="hidden lg:flex shrink-0 flex-col bg-sidebar text-sidebar-foreground"
+      className="hidden lg:flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
       style={{ width: "var(--sidebar-width)" }}
     >
       <div className="px-6 py-6">

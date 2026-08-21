@@ -55,12 +55,12 @@ export function ScreeningForm() {
   return (
     <div className="space-y-6">
       {!apiKey && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-fit-review-bg px-4 py-3">
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-fit-review-bg px-4 py-3 dark:border-amber-900/40">
           <AlertTriangle
             className="mt-0.5 size-4 shrink-0 text-fit-review"
             aria-hidden
           />
-          <p className="text-sm text-amber-900">
+          <p className="text-sm text-amber-900 dark:text-amber-100">
             <span className="font-medium">Screening is paused.</span> Without a
             key, new applications arrive unscreened and marked for manual
             review.

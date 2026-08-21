@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { THEME_STORAGE_KEY, themeInitScript } from "@/lib/theme-script";
 import "./globals.css";
 
 const inter = Inter({
@@ -26,8 +27,22 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-theme="light"
       className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        {/* Sets the real theme before first paint — see
+            node_modules/next/dist/docs/.../preventing-flash-before-hydration.md.
+            next-themes' approach (a script rendered BY a React component)
+            is exactly the pattern that guide replaces for this Next
+            version; this is a real <script> element instead. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: themeInitScript(THEME_STORAGE_KEY),
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         {children}
         <Toaster position="bottom-right" />

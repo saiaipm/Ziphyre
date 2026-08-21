@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { createClient } from "@/lib/supabase/client";
+import { ThemeToggle } from "@/components/shell/theme-toggle";
 
 type Props = {
   displayName: string | null;
@@ -117,6 +118,10 @@ export function AccountMenu({ displayName, email, avatarUrl }: Props) {
             </button>
           </div>
         </div>
+
+        <DropdownMenuSeparator />
+
+        <ThemeToggle />
 
         <DropdownMenuSeparator />
 

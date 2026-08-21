@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { OverviewClient } from "./overview-client";
 
 export const metadata: Metadata = {
-  title: "Hiring at a glance",
+  title: "Hiring Pipeline",
 };
 
 export default function HomePage() {
