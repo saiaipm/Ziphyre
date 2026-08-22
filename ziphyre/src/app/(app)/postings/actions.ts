@@ -2,12 +2,49 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/session";
 import { getProviderChain } from "@/lib/provider-settings";
 import { extractRequirements } from "@/lib/ai/extract-requirements";
 import { runWithFallback } from "@/lib/ai/run-with-fallback";
 import type { ProviderId } from "@/lib/ai/providers";
+import { enqueueJob } from "@/lib/jobs/queue";
+import { runQueuedJobs } from "@/lib/jobs/runner";
+import { getApplicationsForOpening, type ApplicationListItem } from "@/lib/applications";
+
+const ALLOWED_CV_MIME = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+/** FR-24. Some browsers report an empty or generic type for older formats. */
+function resolveCvMime(file: File): string | null {
+  if (ALLOWED_CV_MIME.has(file.type)) return file.type;
+  const ext = file.name.toLowerCase().split(".").pop();
+  switch (ext) {
+    case "pdf":
+      return "application/pdf";
+    case "doc":
+      return "application/msword";
+    case "docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    default:
+      return null;
+  }
+}
+
+/** Pump queued jobs right after the response is sent — a local-dev/test
+ * convenience layered on the real job queue, not a replacement for it.
+ * If a deployment's route timeout cuts this short, the jobs are still
+ * `queued` and Vercel Cron (vercel.json, every minute) picks them up. */
+function pumpJobsAfterResponse() {
+  after(() => {
+    runQueuedJobs({ kinds: ["screen_application"] }).catch(() => {});
+  });
+}
 
 type ActionResult<T = undefined> =
   | { ok: true; data: T }
@@ -392,10 +429,11 @@ export async function reopenPosting(postingId: string): Promise<ActionResult> {
 }
 
 /**
- * FR-84. Cascades to openings, JD versions and requirements at the
- * database level (tech spec §2.1). No application table exists yet
- * (M2), so the candidate count this confirms is always zero right
- * now — genuinely true, not a placeholder.
+ * FR-84. Cascades to openings, JD versions, requirements,
+ * applications, screenings and stage events at the database level
+ * (tech spec §2.1). The delete-confirmation dialog's candidate count
+ * isn't wired to a real query yet — that's a small follow-up, not
+ * part of M2's scope.
  */
 export async function deletePosting(postingId: string): Promise<ActionResult> {
   const session = await getSessionContext();
@@ -408,4 +446,162 @@ export async function deletePosting(postingId: string): Promise<ActionResult> {
   revalidatePath("/postings");
   revalidatePath("/");
   redirect("/postings");
+}
+
+// ---------------------------------------------------------------------------
+// M2 — manual candidate upload and screening retry
+// ---------------------------------------------------------------------------
+
+/**
+ * FR-31/FR-32. Each file becomes one application with every form field
+ * Not provided (FR-33) — manual upload has no Google-verified email,
+ * so identity here is name-only; the candidate's email is an internal
+ * placeholder the UI never shows (confirmed decision, see the M2 plan).
+ * A bad file is skipped, never allowed to block the rest of the batch
+ * (§9 "Loading — bulk upload").
+ */
+export async function addCandidatesToOpening(
+  openingId: string,
+  formData: FormData,
+): Promise<ActionResult<{ added: number; skipped: string[] }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const files = formData.getAll("file") as File[];
+  const names = formData.getAll("name") as string[];
+  if (files.length === 0) return { ok: false, error: "Choose at least one CV." };
+
+  const supabase = await createClient();
+  const organizationId = session.organization.id;
+  const skipped: string[] = [];
+  let added = 0;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const mime = resolveCvMime(file);
+    if (!mime) {
+      skipped.push(`${file.name} (not a PDF, DOC or DOCX)`);
+      continue;
+    }
+
+    const displayName = (names[i] ?? "").trim() || file.name.replace(/\.[^.]+$/, "");
+    const placeholderEmail = `manual+${randomUUID()}@ziphyre.internal`;
+
+    const { data: candidate, error: candidateError } = await supabase
+      .from("candidate")
+      .insert({
+        organization_id: organizationId,
+        email: placeholderEmail,
+        full_name: displayName,
+      })
+      .select("id")
+      .single();
+    if (candidateError) {
+      skipped.push(`${file.name} (${candidateError.message})`);
+      continue;
+    }
+
+    const { data: application, error: applicationError } = await supabase
+      .from("application")
+      .insert({
+        organization_id: organizationId,
+        opening_id: openingId,
+        candidate_id: candidate.id,
+        source: "manual",
+        source_status: "manual",
+        submitted_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (applicationError) {
+      skipped.push(`${file.name} (${applicationError.message})`);
+      continue;
+    }
+
+    const storagePath = `${organizationId}/${application.id}/${file.name}`;
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const { error: uploadError } = await supabase.storage
+      .from("cvs")
+      .upload(storagePath, bytes, { contentType: mime });
+    if (uploadError) {
+      skipped.push(`${file.name} (${uploadError.message})`);
+      continue;
+    }
+
+    const { error: updateError } = await supabase
+      .from("application")
+      .update({
+        cv_storage_path: storagePath,
+        cv_mime: mime,
+        cv_original_filename: file.name,
+      })
+      .eq("id", application.id);
+    if (updateError) {
+      skipped.push(`${file.name} (${updateError.message})`);
+      continue;
+    }
+
+    await enqueueJob(organizationId, "screen_application", {
+      applicationId: application.id,
+      reason: "new",
+    });
+    added++;
+  }
+
+  if (added === 0) {
+    return { ok: false, error: `None of the files could be added: ${skipped.join(", ")}` };
+  }
+
+  pumpJobsAfterResponse();
+
+  const { data: opening } = await supabase
+    .from("opening")
+    .select("posting_id")
+    .eq("id", openingId)
+    .single();
+  revalidatePath(`/postings/${opening?.posting_id}/openings/${openingId}`);
+
+  return { ok: true, data: { added, skipped } };
+}
+
+/** Polled by the candidates list while any application is pending/in-progress. */
+export async function refreshApplications(
+  openingId: string,
+): Promise<ActionResult<ApplicationListItem[]>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const applications = await getApplicationsForOpening(openingId);
+  return { ok: true, data: applications };
+}
+
+/** FR-48. Re-queues a screening that's flagged Needs manual review. */
+export async function retryScreening(applicationId: string): Promise<ActionResult> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data: application, error } = await supabase
+    .from("application")
+    .update({ screening_status: "pending", screening_failure_reason: null })
+    .eq("id", applicationId)
+    .select("opening_id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+
+  await enqueueJob(session.organization.id, "screen_application", {
+    applicationId,
+    reason: "retry",
+  });
+
+  pumpJobsAfterResponse();
+
+  const { data: opening } = await supabase
+    .from("opening")
+    .select("posting_id")
+    .eq("id", application.opening_id)
+    .single();
+  revalidatePath(`/postings/${opening?.posting_id}/openings/${application.opening_id}`);
+
+  return { ok: true, data: undefined };
 }

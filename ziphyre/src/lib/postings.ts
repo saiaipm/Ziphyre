@@ -17,10 +17,10 @@ export type PostingSummary = {
 };
 
 /**
- * Application counts aren't queried here — that table doesn't exist
- * until M2. Every opening reads as zero applied/screened/shortlisted
- * until then; the overview UI treats that as a true empty state, not
- * a missing feature.
+ * Application counts aren't queried here yet — the overview/pipeline
+ * summary (FR-77) is M6 (Home & retention). `application` exists as
+ * of M2, but every opening still reads as zero applied/screened/
+ * shortlisted on this screen until that summary is built.
  */
 export async function getPostingsForOrg(): Promise<PostingSummary[]> {
   const supabase = await createClient();

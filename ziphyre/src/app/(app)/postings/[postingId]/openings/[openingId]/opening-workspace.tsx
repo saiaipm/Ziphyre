@@ -21,12 +21,14 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { modelLabel } from "@/lib/ai/providers";
+import type { ApplicationListItem } from "@/lib/applications";
 import {
   updateOpeningDetails,
   updateOpeningJd,
   extractRequirementsForOpening,
   saveRequirements,
 } from "../../../actions";
+import { CandidatesCard } from "./candidates-card";
 
 type Requirement = {
   id: string;
@@ -42,6 +44,7 @@ type Props = {
   jdContent: string | null;
   jdVersion: number | null;
   initialRequirements: Requirement[];
+  initialApplications: ApplicationListItem[];
 };
 
 export function OpeningWorkspace({
@@ -51,6 +54,7 @@ export function OpeningWorkspace({
   jdContent,
   jdVersion,
   initialRequirements,
+  initialApplications,
 }: Props) {
   return (
     <div className="space-y-6">
@@ -61,6 +65,7 @@ export function OpeningWorkspace({
         hasJd={Boolean(jdContent)}
         initialRequirements={initialRequirements}
       />
+      <CandidatesCard openingId={openingId} initialApplications={initialApplications} />
     </div>
   );
 }

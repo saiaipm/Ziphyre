@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { getOpeningDetail } from "@/lib/postings";
+import { getApplicationsForOpening } from "@/lib/applications";
 import { OpeningWorkspace } from "./opening-workspace";
 
 export async function generateMetadata({
@@ -26,6 +27,7 @@ export default async function OpeningDetailPage({
 
   const { opening, jdVersion, requirements } = detail;
   const postingRef = opening.posting as unknown as { name: string } | null;
+  const applications = await getApplicationsForOpening(openingId);
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -49,6 +51,7 @@ export default async function OpeningDetailPage({
           text: r.text,
           kind: r.kind as "must_have" | "preferred",
         }))}
+        initialApplications={applications}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptSecret, decryptSecret, keyHint } from "@/lib/crypto";
 import { bufferToPgBytea, pgByteaToBuffer } from "@/lib/pg-bytea";
 import type { ProviderId } from "@/lib/ai/providers";
@@ -55,6 +56,31 @@ export async function getProviderChain(): Promise<DecryptedProvider[]> {
   const { data } = await supabase
     .from("provider_settings")
     .select("provider, model, api_key_encrypted")
+    .order("priority", { ascending: true });
+
+  return (data ?? [])
+    .filter((row) => row.api_key_encrypted)
+    .map((row) => ({
+      provider: row.provider as ProviderId,
+      model: row.model,
+      apiKey: decryptSecret(pgByteaToBuffer(row.api_key_encrypted as string)),
+    }));
+}
+
+/**
+ * Same as `getProviderChain`, for the background screening job — which
+ * has no user session/cookies to build the RLS-scoped client from.
+ * Filters `organization_id` explicitly, per tech spec §3: background
+ * jobs bypass RLS and must never rely on it.
+ */
+export async function getProviderChainForOrg(
+  organizationId: string,
+): Promise<DecryptedProvider[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("provider_settings")
+    .select("provider, model, api_key_encrypted")
+    .eq("organization_id", organizationId)
     .order("priority", { ascending: true });
 
   return (data ?? [])
