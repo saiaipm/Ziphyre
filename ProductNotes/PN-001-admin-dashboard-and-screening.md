@@ -114,7 +114,9 @@ Framing matters: gaps are stated as *distance from this JD*, never as judgements
 
 ### 5. AI provider choice
 
-The admin can choose which AI provider performs screening and supply their own key — Claude, Gemini, or OpenAI. This is a product capability, not a configuration detail: it gives the customer control over cost and over where their candidate data is processed, which matters for a business handling other people's personal information.
+The admin can choose which AI provider performs screening and supply their own key — OpenAI, Google Gemini, or NVIDIA NIM. This is a product capability, not a configuration detail: it gives the customer control over cost and over where their candidate data is processed, which matters for a business handling other people's personal information.
+
+**The list is deliberately short, and deliberately not the most capable models available.** Screening is high-volume and low-complexity — extraction plus a bounded judgement, run once per application. The cheap, fast tier is the right tool; frontier reasoning models would multiply cost and latency without scoring candidates any better. One model per provider, shown by its official name.
 
 Switching providers does not rescreen anything already scored.
 
@@ -199,7 +201,11 @@ Every export is marked internal and carries personal data out of our control the
 | Stages | New, Screened, Shortlisted, On Hold, Rejected |
 | Access | Single admin |
 | Manual CV upload | Permanent capability |
-| AI provider | Admin-selectable, bring your own key |
+| AI provider | Admin-selectable, bring your own key — OpenAI, Google Gemini, NVIDIA NIM |
+| Multiple providers | Several configurable at once, in an explicit order, with automatic fallback |
+| Fallback visibility | Never silent — when a fallback produced a result, the interface says so |
+| Model tier | Cheap/fast tier only, one model per provider, official names shown |
+| CV input to the model | Text extracted first, then sent as text — one pipeline for all three providers |
 
 ---
 

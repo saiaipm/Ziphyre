@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { THEME_STORAGE_KEY, themeInitScript } from "@/lib/theme-script";
 import "./globals.css";
 
@@ -44,8 +45,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
-        <Toaster position="bottom-right" />
+        <TooltipProvider delayDuration={200}>
+          {children}
+          <Toaster position="bottom-right" />
+        </TooltipProvider>
       </body>
     </html>
   );

@@ -1,9 +1,17 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { ScreeningForm } from "./screening-form";
+import { getSessionContext } from "@/lib/session";
+import { getConfiguredProviders } from "@/lib/provider-settings";
 
 export const metadata: Metadata = { title: "Screening" };
 
-export default function ScreeningSettingsPage() {
+export default async function ScreeningSettingsPage() {
+  const session = await getSessionContext();
+  if (!session) redirect("/sign-in");
+
+  const configured = await getConfiguredProviders();
+
   return (
     <div className="max-w-3xl space-y-8">
       <div>
@@ -14,7 +22,7 @@ export default function ScreeningSettingsPage() {
           is processed.
         </p>
       </div>
-      <ScreeningForm />
+      <ScreeningForm configured={configured} />
     </div>
   );
 }

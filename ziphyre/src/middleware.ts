@@ -8,7 +8,10 @@ import { NextResponse, type NextRequest } from "next/server";
  * Signed in, no org   -> /no-access   (tech spec §3.1)
  * Signed in, with org -> through
  */
-const PUBLIC_PATHS = ["/sign-in", "/auth", "/no-access"];
+// /api/cron is guarded by its own bearer-token check (CRON_SECRET),
+// not a user session — Vercel Cron never carries one. Without this,
+// every cron invocation would redirect to /sign-in and never run.
+const PUBLIC_PATHS = ["/sign-in", "/auth", "/no-access", "/api/cron"];
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });

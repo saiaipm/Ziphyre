@@ -242,8 +242,10 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 ### Settings
 
-**FR-81** Meera can choose the AI provider used for screening from Claude, Gemini and OpenAI, and supply the customer's own key.
-**FR-82** Changing provider does not rescreen anything already screened.
+**FR-81** Meera can choose the AI provider used for screening from a short curated list — OpenAI, Google Gemini and NVIDIA NIM — and supply the customer's own key. Each provider offers one model, chosen for low cost and low latency rather than maximum capability: screening is a high-volume, low-complexity task and frontier reasoning models would cost more without scoring better. Models are shown by their official names, never raw API identifiers.
+**FR-82** Adding, removing or reordering providers does not rescreen anything already screened.
+**FR-85** Meera can configure more than one provider at once and set the order they are tried in. Screening uses the first that succeeds; if it fails, the next is tried automatically. Removing a provider and reordering the chain are both available without re-entering keys.
+**FR-86** Where a fallback provider produced a result, that is stated plainly at the point of use — never silent. The admin asked for one model and got another, and must be able to see that. Every score continues to record the model that actually produced it (**FR-49**), which matters more under fallback, not less: with automatic failover the model behind any given score is no longer predictable in advance.
 **FR-83** Where no valid key is present, screening cannot run; new applications are flagged Needs manual review with that reason stated, and the settings screen says so plainly.
 
 ---
@@ -462,10 +464,21 @@ Validated against the seven real Chartered Accountant applicants and the human r
 |---|---|
 | Heading | Screening provider |
 | Body | Choose who screens your candidates and use your own key. This controls what screening costs you and where your applicants' information is processed. |
-| Options | Claude · Gemini · OpenAI |
+| Provider options | OpenAI · Google Gemini · NVIDIA NIM |
+| Model options | GPT-4o mini · Gemini 2.5 Flash-Lite · GPT-OSS-20B |
+| Model notes | Fast and inexpensive. Reliable structured output. / Lowest latency and cost of the three. / Open-weight fallback. Text only — no document vision. |
 | Key label | Your API key |
+| Key hint | Get one from {provider key location}. Stored encrypted and verified on save — never shown again afterwards, only the last four characters. |
 | No key warning | Screening is paused. Without a key, new applications arrive unscreened and marked for manual review. |
-| Switch notice | Changing provider won't rescreen anyone already screened. Scores from different providers aren't directly comparable. |
+| Active state | Screening active — {n} providers configured. If the first fails, the next is tried automatically. |
+| Single-provider nudge | Screening active — 1 provider configured. Add a second provider for automatic fallback. |
+| Fallback order heading | Fallback order — tried top to bottom until one succeeds. Every score records which model actually produced it. |
+| Provider row | {model name} · {provider} · key ending {last four} |
+| Primary badge | Primary |
+| Fallback used notice | Used a fallback provider — your primary provider failed, so {model name} produced these suggestions instead. |
+| Provenance line | Suggested by {model name}. |
+| All providers failed | {first provider's error} (all {n} configured providers failed) |
+| Switch notice | Changing provider won't rescreen anyone already screened. Scores from different providers aren't directly comparable, so each score records which provider produced it. |
 
 ---
 
@@ -674,7 +687,7 @@ Posting · Opening · Application · Candidate · Stage · Screening score · Sc
 | **Google Forms** | Candidates apply | No new applications arrive. Existing pipeline unaffected. Meera sees a banner naming the affected postings |
 | **Google Sheets** | Where submissions land | Same as above. Ziphyre never writes here, so nothing is corrupted by an outage |
 | **Google Drive** | Where uploaded CVs live | Assessments and scores stay readable; the CV pane explains it can't display the file and offers a direct link |
-| **AI provider (Claude, Gemini or OpenAI)** | Screening | New applications arrive unscreened, flagged Needs manual review with the reason. Nothing is lost; Meera can retry once the provider is available. Existing scores are unaffected |
+| **AI provider (OpenAI, Google Gemini or NVIDIA NIM)** | Screening | New applications arrive unscreened, flagged Needs manual review with the reason. Nothing is lost; Meera can retry once the provider is available. Existing scores are unaffected |
 
 **A principle across all four:** an external failure may delay screening, never lose a candidate.
 
@@ -801,6 +814,8 @@ No dark launch and no admin-only preview: there is no existing product to hide t
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 5 | 22 Aug 2026 | **FR-85 and FR-86 added**: multiple providers configurable at once in an explicit fallback order, tried until one succeeds; a fallback is never silent. FR-82 widened to cover adding, removing and reordering. Settings copy extended for the fallback-order list, primary badge, fallback notice and provenance line. Gemini models updated to the current 3.5–3.7 line after Google retired 2.5 for generation |
+| Draft 4 | 22 Aug 2026 | **FR-81 rewritten.** Provider list is now OpenAI, Google Gemini and NVIDIA NIM — Claude dropped, OpenRouter rejected on reliability. One model per provider, cheap/fast tier by deliberate choice, shown by official name rather than API slug. Settings copy updated with model notes, key hints and the connected state |
 | Draft 3 | 21 Aug 2026 | **FR-84** added: Meera can permanently delete a posting, with a confirmation naming the candidate count affected. Confirms as a real product decision what was previously only a tech-spec assumption. Pause/lifecycle states beyond open, closed and deleted were considered and explicitly dropped — closing remains the only way to stop a posting short of deletion |
 | Draft 2 | 16 Aug 2026 | Analytics removed entirely from v1. §12 now states no tracking or instrumentation of any kind, with stage-change history and score provenance explicitly retained as product functionality rather than telemetry. Added to out-of-scope; deferred to Roadmap Theme C. Success measures confirmed as directly observable, needing no instrumentation |
 | Draft 1 | 15 Aug 2026 | First functional spec, from PN-001 and ProductContext v1.1. Nine decisions taken during clarification: requirements proposed from the JD and confirmed by the admin; JD Fit redefined as responsibilities match to remove double-counting; five stages retained with New → Screened as a processing transition; unscreenable CVs held at New with a manual-review flag; relocation question added to the form template and folded into the Location component; Google account connected once with form selection from a list; home overview added for Rahul; disposition optional from a quick-pick list; desktop for working surfaces with a phone-readable overview |

@@ -217,7 +217,7 @@ stage_event                             -- APPEND ONLY
 
 provider_settings
   organization_id       uuid pk references organization(id)
-  provider           text not null check (provider in ('claude','gemini','openai'))
+  provider           text not null check (provider in ('openai','google','nvidia'))
   model              text not null
   api_key_encrypted  bytea
   key_hint           text            -- last 4 chars only
@@ -688,6 +688,7 @@ Sequenced so screening quality is proven before any Google work is built.
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 4 | 22 Aug 2026 | `provider_settings.provider` constraint changed from `('claude','gemini','openai')` to `('openai','google','nvidia')`, matching the revised FR-81 list. Caught before any key was stored: the live CHECK constraint would have rejected all three new provider ids at save time. Rolled forward in migration `20260822140000` rather than editing the applied one |
 | Draft 3 | 21 Aug 2026 | Posting deletion confirmed as an actual product decision (**FR-84**, functional spec) rather than an unconfirmed assumption. Fixed a real schema gap this surfaced: `application.opening_id`, `screening.application_id`, `stage_event.application_id` and `unmatched_submission.posting_id` had no cascade — deleting a posting as specified would have failed on a foreign-key violation rather than actually deleting anything. All four now cascade |
 | Draft 2 | 16 Aug 2026 | Workspace renamed Organization throughout, with profile fields (legal name, website, industry, size, location, timezone, currency, logo) and its own settings screen. Membership split out of `app_user` so the permission layer lands without touching every table — role and invite columns present, role constrained to `admin` for now. Organization bootstrap decided: a seed-admin email creates the org on first sign-in, everyone else is refused until invited. Closes the M0 open question |
 | Draft 1 | 16 Aug 2026 | First tech spec, from functional spec Draft 2 and TechDecisions Draft 2. Three decisions beyond the functional spec, all marked: append-only history with a denormalised current pointer; reassignment collision refused rather than merged; must-have verdicts required per requirement id with a missing entry treated as a validation failure rather than an implied pass |
