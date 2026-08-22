@@ -144,13 +144,11 @@ priority now that the path itself is proven.
 sync as of commit `8dfbe22`. M2's work (this session) is uncommitted — commit
 and push it when ready.
 
-**7. Tally-hallucination on the top-ranked candidate is still open.**
+**7. Tally-hallucination on the top-ranked candidate — accepted, not fixed.**
 Screening (`gpt-4o-mini`) credits her with Tally experience her CV never
-mentions, despite an explicit "quote or closely paraphrase the CV"
-instruction surviving two prompt revisions. See "M2 test result" above and
-`TechDecisions.md` §7. Not chased further this session — flagging for a
-product decision: accept as a known model limitation an admin should
-spot-check, or add a require-a-CV-quote structural fix later.
+mentions, surviving two prompt revisions. Decided 22 Aug 2026: accept as a
+known model limitation for now; revisit only if this pattern repeats on
+future CVs. See "M2 test result" above and `TechDecisions.md` §7.
 
 **8. `next.config.ts` needs `serverExternalPackages` for pdf-parse.**
 Already fixed (`["pdf-parse", "pdfjs-dist"]`) — noted here because it's the
