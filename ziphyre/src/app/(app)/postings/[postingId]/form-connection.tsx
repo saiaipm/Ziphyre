@@ -11,11 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  listGoogleForms,
-  connectFormToPosting,
-  importNow,
-} from "../actions";
+import { listGoogleForms, connectFormToPosting, importNow } from "../actions";
 import type { FormSummary, MatchReport } from "@/lib/google/forms";
 
 export function FormConnection({
@@ -32,7 +28,9 @@ export function FormConnection({
   lastImportAt: string | null;
 }) {
   const [forms, setForms] = useState<FormSummary[] | null>(null);
-  const [selectedForm, setSelectedForm] = useState<string | null>(connectedFormId);
+  const [selectedForm, setSelectedForm] = useState<string | null>(
+    connectedFormId,
+  );
   const [report, setReport] = useState<MatchReport | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -53,7 +51,10 @@ export function FormConnection({
   async function onConnect() {
     if (!selectedForm) return;
     setBusy(true);
-    const result = await connectFormToPosting({ postingId, formId: selectedForm });
+    const result = await connectFormToPosting({
+      postingId,
+      formId: selectedForm,
+    });
     setBusy(false);
     if (!result.ok) {
       toast.error("Couldn't connect that form", { description: result.error });
@@ -94,52 +95,65 @@ export function FormConnection({
       </div>
 
       <div className="space-y-5 px-6 py-5">
-        {!googleConnected ? (
-          <p className="text-sm text-muted-foreground">
-            Connect a Google account in Settings &rarr; Connections first.
+        {/* Steps 1 and 2 are deliberately NOT gated on the Google
+            connection: you build the form before you connect it, so
+            hiding the option list until after connecting puts it behind
+            the step that needs it. Only the picker below needs Google. */}
+        <div>
+          <p className="text-sm font-medium">
+            1. Copy our template into your Google account.
           </p>
-        ) : (
-          <>
-            <div>
-              <p className="text-sm font-medium">
-                1. Copy our template into your Google account.
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                See <code>docs/google-form-setup.md</code> for the exact
-                questions and settings.
-              </p>
-            </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            See <code>docs/google-form-setup.md</code> for the exact questions
+            and settings.
+          </p>
+        </div>
 
-            <div>
-              <p className="text-sm font-medium">
-                2. Add your openings to the form&rsquo;s &ldquo;Role applied
-                for&rdquo; dropdown.
-              </p>
-              <div className="mt-2 rounded-md border border-border bg-muted/40 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="label-meta mb-1">Copy these, exactly as written</p>
-                    <ul className="space-y-0.5">
-                      {openingOptions.map((o) => (
-                        <li key={o} className="font-mono text-xs">
-                          {o}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={copyOptions}>
-                    <Copy className="size-3.5" aria-hidden />
-                    Copy
-                  </Button>
-                </div>
+        <div>
+          <p className="text-sm font-medium">
+            2. Add your openings to the form&rsquo;s &ldquo;Role applied
+            for&rdquo; dropdown.
+          </p>
+          <div className="mt-2 rounded-md border border-border bg-muted/40 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="label-meta mb-1">
+                  Copy these, exactly as written
+                </p>
+                <ul className="space-y-0.5">
+                  {openingOptions.map((o) => (
+                    <li key={o} className="font-mono text-xs">
+                      {o}
+                    </li>
+                  ))}
+                </ul>
               </div>
+              <Button size="sm" variant="outline" onClick={copyOptions}>
+                <Copy className="size-3.5" aria-hidden />
+                Copy
+              </Button>
             </div>
+          </div>
+        </div>
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium">3. Come back and pick your form below.</p>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">
+            3. Come back and pick your form below.
+          </p>
+          {!googleConnected ? (
+            <p className="text-sm text-muted-foreground">
+              Connect a Google account in Settings &rarr; Connections first.
+            </p>
+          ) : (
+            <>
               <div className="flex flex-wrap items-center gap-2">
                 {forms === null ? (
-                  <Button size="sm" variant="outline" onClick={loadForms} disabled={busy}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={loadForms}
+                    disabled={busy}
+                  >
                     {busy ? "Loading…" : "Choose your form"}
                   </Button>
                 ) : (
@@ -159,14 +173,23 @@ export function FormConnection({
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button size="sm" onClick={onConnect} disabled={busy || !selectedForm}>
+                    <Button
+                      size="sm"
+                      onClick={onConnect}
+                      disabled={busy || !selectedForm}
+                    >
                       {busy ? "Connecting…" : "Connect form"}
                     </Button>
                   </>
                 )}
 
                 {connectedFormId && (
-                  <Button size="sm" variant="outline" onClick={onImportNow} disabled={busy}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onImportNow}
+                    disabled={busy}
+                  >
                     <RefreshCw className="size-3.5" aria-hidden />
                     Check for responses now
                   </Button>
@@ -179,11 +202,11 @@ export function FormConnection({
                   Responses are picked up automatically every minute.
                 </p>
               )}
-            </div>
+            </>
+          )}
+        </div>
 
-            {report && <MatchResult report={report} />}
-          </>
-        )}
+        {report && <MatchResult report={report} />}
       </div>
     </section>
   );
@@ -201,7 +224,10 @@ function MatchResult({ report }: { report: MatchReport }) {
 
   return (
     <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-fit-review-bg px-4 py-3 dark:border-amber-900/40">
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fit-review" aria-hidden />
+      <AlertTriangle
+        className="mt-0.5 size-4 shrink-0 text-fit-review"
+        aria-hidden
+      />
       <div className="space-y-1.5 text-sm text-amber-900 dark:text-amber-100">
         {report.optionsWithoutOpening.length > 0 && (
           <p>
