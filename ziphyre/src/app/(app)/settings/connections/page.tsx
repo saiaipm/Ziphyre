@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
 import { Check, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { getSetupState } from "@/lib/config";
+import { getSessionContext } from "@/lib/session";
+import { getConnection } from "@/lib/google/auth";
+import { ConnectGoogle } from "./connect-google";
 
 export const metadata: Metadata = { title: "Connections" };
 
-export default function ConnectionsPage() {
+export default async function ConnectionsPage() {
   const items = getSetupState();
+  const session = await getSessionContext();
+  const connection = session
+    ? await getConnection(session.organization.id)
+    : null;
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -48,10 +54,10 @@ export default function ConnectionsPage() {
               No permission to change anything — by design
             </li>
           </ul>
-          <Button disabled>Connect Google account</Button>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Needs Google OAuth credentials in the environment first.
-          </p>
+          <ConnectGoogle
+            connectedEmail={connection?.googleEmail ?? null}
+            needsReconnect={connection?.status === "needs_reconnect"}
+          />
         </div>
       </section>
 

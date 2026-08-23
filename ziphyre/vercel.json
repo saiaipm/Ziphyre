@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/jobs",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/import",
+      "schedule": "* * * * *"
     }
   ]
 }

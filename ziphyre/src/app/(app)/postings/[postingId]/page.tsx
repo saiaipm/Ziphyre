@@ -3,8 +3,13 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, ArrowRight, FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getPostingDetail } from "@/lib/postings";
+import { getPostingDetail, getUnmatchedForPosting } from "@/lib/postings";
+import { getSessionContext } from "@/lib/session";
+import { getConnection } from "@/lib/google/auth";
 import { PostingActions } from "./posting-actions";
+import { PostingTitle } from "./posting-title";
+import { FormConnection } from "./form-connection";
+import { UnmatchedQueue } from "./unmatched-queue";
 
 export async function generateMetadata({
   params,
@@ -26,32 +31,32 @@ export default async function PostingDetailPage({
   if (!posting) notFound();
 
   const isClosed = posting.status === "closed";
+  const session = await getSessionContext();
+  const connection = session
+    ? await getConnection(session.organization.id)
+    : null;
+  const unmatched = await getUnmatchedForPosting(postingId);
 
   return (
     <div className="max-w-3xl space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-[28px] leading-tight font-semibold">
-              {posting.name}
-            </h1>
-            {isClosed && (
-              <span className="rounded-full bg-fit-rejected-bg px-2.5 py-0.5 text-xs font-medium text-fit-rejected">
-                Closed
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {posting.openings.length}{" "}
-            {posting.openings.length === 1 ? "opening" : "openings"}
-          </p>
-        </div>
+        <PostingTitle
+          postingId={posting.id}
+          name={posting.name}
+          openingCount={posting.openings.length}
+          isClosed={isClosed}
+        />
         <PostingActions
           postingId={posting.id}
           postingName={posting.name}
           isClosed={isClosed}
         />
       </div>
+
+      <UnmatchedQueue
+        items={unmatched}
+        openings={posting.openings.map((o) => ({ id: o.id, title: o.title }))}
+      />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -105,6 +110,16 @@ export default async function PostingDetailPage({
           ))}
         </div>
       </section>
+
+      {!isClosed && (
+        <FormConnection
+          postingId={posting.id}
+          openingOptions={posting.openingOptionValues}
+          googleConnected={connection?.status === "active"}
+          connectedFormId={posting.formId}
+          lastImportAt={posting.lastImportAt}
+        />
+      )}
     </div>
   );
 }

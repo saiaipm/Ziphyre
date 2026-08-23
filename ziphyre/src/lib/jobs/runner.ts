@@ -5,7 +5,14 @@ import {
   runScreenApplication,
   markScreeningNeedsManualReview,
 } from "@/lib/jobs/handlers/screen-application";
-import type { JobKind, JobRow, ScreenApplicationPayload } from "@/lib/jobs/types";
+import { runImportSubmissions } from "@/lib/jobs/handlers/import-submissions";
+import { GoogleNeedsReconnectError } from "@/lib/google/auth";
+import type {
+  JobKind,
+  JobRow,
+  ScreenApplicationPayload,
+  ImportSubmissionsPayload,
+} from "@/lib/jobs/types";
 
 /** Tech spec §7: 1m, 5m, 15m, 1h, 6h — indexed by attempt number (1-based). */
 const BACKOFF_SECONDS = [60, 300, 900, 3600, 21600];
@@ -27,6 +34,12 @@ async function dispatch(job: JobRow): Promise<void> {
       await runScreenApplication(
         job.organization_id,
         job.payload as ScreenApplicationPayload,
+      );
+      return;
+    case "import_submissions":
+      await runImportSubmissions(
+        job.organization_id,
+        job.payload as ImportSubmissionsPayload,
       );
       return;
     default:
@@ -56,7 +69,8 @@ export async function runQueuedJobs(options?: {
   kinds?: JobKind[];
   limit?: number;
 }): Promise<{ processed: number }> {
-  const kinds = options?.kinds ?? (["screen_application"] as JobKind[]);
+  const kinds =
+    options?.kinds ?? (["screen_application", "import_submissions"] as JobKind[]);
   const limit = options?.limit ?? 10;
   const workerId = randomUUID();
 
@@ -83,7 +97,13 @@ export async function runQueuedJobs(options?: {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
 
-      if (job.attempts >= job.max_attempts) {
+      // A revoked or expired Google grant never recovers by retrying, and
+      // the connection already carries needs_reconnect for the UI to act
+      // on. Burning five backoff attempts would only delay the next real
+      // import once the admin reconnects.
+      const terminal = err instanceof GoogleNeedsReconnectError;
+
+      if (terminal || job.attempts >= job.max_attempts) {
         await admin
           .from("job")
           .update({ status: "failed", last_error: message })

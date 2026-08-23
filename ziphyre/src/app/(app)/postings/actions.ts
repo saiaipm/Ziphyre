@@ -13,6 +13,15 @@ import type { ProviderId } from "@/lib/ai/providers";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { runQueuedJobs } from "@/lib/jobs/runner";
 import { getApplicationsForOpening, type ApplicationListItem } from "@/lib/applications";
+import {
+  listForms,
+  getFormDetail,
+  compareOptions,
+  type FormSummary,
+  type MatchReport,
+} from "@/lib/google/forms";
+import { GoogleNeedsReconnectError } from "@/lib/google/auth";
+import { attachCvFromDrive } from "@/lib/jobs/handlers/import-submissions";
 
 const ALLOWED_CV_MIME = new Set([
   "application/pdf",
@@ -193,6 +202,30 @@ export async function updateOpeningDetails(input: {
 
   revalidatePath(`/postings/${opening.posting_id}/openings/${input.openingId}`);
   revalidatePath(`/postings/${opening.posting_id}`);
+  return { ok: true, data: undefined };
+}
+
+/** Renames a posting. Not itself an FR — postings/openings only cover the opening's own fields (FR-12) — but the posting name was otherwise fixed forever after creation. */
+export async function updatePostingName(input: {
+  postingId: string;
+  name: string;
+}): Promise<ActionResult> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "Name this posting." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("posting")
+    .update({ name })
+    .eq("id", input.postingId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/postings/${input.postingId}`);
+  revalidatePath("/postings");
+  revalidatePath("/");
   return { ok: true, data: undefined };
 }
 
@@ -562,6 +595,195 @@ export async function addCandidatesToOpening(
   revalidatePath(`/postings/${opening?.posting_id}/openings/${openingId}`);
 
   return { ok: true, data: { added, skipped } };
+}
+
+// ---------------------------------------------------------------------------
+// M3 — Google form connection
+// ---------------------------------------------------------------------------
+
+function googleError(err: unknown): string {
+  if (err instanceof GoogleNeedsReconnectError) {
+    return "Ziphyre has lost access to your Google account. Reconnect it in Settings \u2192 Connections.";
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** FR-26. The admin picks from their own forms; no link is ever pasted. */
+export async function listGoogleForms(): Promise<ActionResult<FormSummary[]>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  try {
+    return { ok: true, data: await listForms(session.organization.id) };
+  } catch (err) {
+    return { ok: false, error: googleError(err) };
+  }
+}
+
+/**
+ * FR-27. Reports mismatches in both directions and connects the form
+ * anyway — a mismatch is a warning the admin can act on, not a block.
+ * Unrecognised options become unmatched submissions (FR-28), never losses.
+ */
+export async function connectFormToPosting(input: {
+  postingId: string;
+  formId: string;
+}): Promise<ActionResult<MatchReport & { formTitle: string }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data: openings, error: openingsError } = await supabase
+    .from("opening")
+    .select("form_option_value")
+    .eq("posting_id", input.postingId);
+  if (openingsError) return { ok: false, error: openingsError.message };
+
+  let detail;
+  try {
+    detail = await getFormDetail(session.organization.id, input.formId);
+  } catch (err) {
+    return { ok: false, error: googleError(err) };
+  }
+
+  if (!detail.linkedSheetId) {
+    return {
+      ok: false,
+      error:
+        "That form has no linked response sheet yet. In the form: Responses \u2192 Link to Sheets, then try again.",
+    };
+  }
+
+  const report = compareOptions(
+    detail.roleOptions,
+    (openings ?? []).map((o) => o.form_option_value),
+  );
+
+  const { error } = await supabase
+    .from("posting")
+    .update({
+      form_id: input.formId,
+      spreadsheet_id: detail.linkedSheetId,
+      form_connected_at: new Date().toISOString(),
+      // Header row. Imports start from the first response below it.
+      last_imported_row: 1,
+    })
+    .eq("id", input.postingId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/postings/${input.postingId}`);
+  return { ok: true, data: { ...report, formTitle: detail.title } };
+}
+
+/** Runs an import immediately rather than waiting for the next cron tick. */
+export async function importNow(postingId: string): Promise<ActionResult> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  await enqueueJob(session.organization.id, "import_submissions", { postingId });
+  after(() => {
+    runQueuedJobs({ kinds: ["import_submissions", "screen_application"] }).catch(
+      () => {},
+    );
+  });
+
+  revalidatePath(`/postings/${postingId}`);
+  return { ok: true, data: undefined };
+}
+
+/** FR-29. Assigning an unmatched submission creates the application and screens it. */
+export async function assignUnmatched(input: {
+  submissionId: string;
+  openingId: string;
+}): Promise<ActionResult> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const organizationId = session.organization.id;
+  const supabase = await createClient();
+
+  const { data: submission, error: loadError } = await supabase
+    .from("unmatched_submission")
+    .select("id, posting_id, raw_answers, cv_drive_file_id, source_row_number")
+    .eq("id", input.submissionId)
+    .maybeSingle();
+  if (loadError) return { ok: false, error: loadError.message };
+  if (!submission) return { ok: false, error: "That submission no longer exists." };
+
+  const raw = (submission.raw_answers ?? {}) as Record<string, unknown>;
+  const email = typeof raw._email === "string" ? raw._email : null;
+  const fullName = typeof raw._fullName === "string" ? raw._fullName : null;
+  if (!email) {
+    return { ok: false, error: "This submission has no email address to identify the candidate." };
+  }
+
+  const formAnswers = Object.fromEntries(
+    Object.entries(raw).filter(([key]) => !key.startsWith("_")),
+  );
+
+  const { data: candidate, error: candidateError } = await supabase
+    .from("candidate")
+    .upsert(
+      { organization_id: organizationId, email, full_name: fullName },
+      { onConflict: "organization_id,email" },
+    )
+    .select("id")
+    .single();
+  if (candidateError) return { ok: false, error: candidateError.message };
+
+  const { data: application, error: applicationError } = await supabase
+    .from("application")
+    .insert({
+      organization_id: organizationId,
+      opening_id: input.openingId,
+      candidate_id: candidate.id,
+      source: "form",
+      source_status: "present",
+      source_row_number: submission.source_row_number,
+      form_answers: formAnswers,
+      cv_drive_file_id: submission.cv_drive_file_id,
+      submitted_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  if (applicationError) {
+    if (applicationError.code === "23505") {
+      return {
+        ok: false,
+        error: "This candidate already has an application on that opening.",
+      };
+    }
+    return { ok: false, error: applicationError.message };
+  }
+
+  const { error: resolveError } = await supabase
+    .from("unmatched_submission")
+    .update({ resolved_application_id: application.id })
+    .eq("id", submission.id);
+  if (resolveError) return { ok: false, error: resolveError.message };
+
+  // The CV has only ever existed in Drive for an unmatched submission, so
+  // it has to be pulled into Storage before screening can read it.
+  if (submission.cv_drive_file_id) {
+    try {
+      await attachCvFromDrive(
+        organizationId,
+        application.id,
+        submission.cv_drive_file_id,
+      );
+    } catch (err) {
+      return { ok: false, error: `Assigned, but the CV couldn't be fetched: ${googleError(err)}` };
+    }
+  }
+
+  await enqueueJob(organizationId, "screen_application", {
+    applicationId: application.id,
+    reason: "new",
+  });
+  pumpJobsAfterResponse();
+
+  revalidatePath(`/postings/${submission.posting_id}`);
+  return { ok: true, data: undefined };
 }
 
 /** Polled by the candidates list while any application is pending/in-progress. */

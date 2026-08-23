@@ -1,13 +1,19 @@
-export type JobKind = "screen_application";
+export type JobKind = "screen_application" | "import_submissions";
 
 export type ScreenApplicationPayload = {
   applicationId: string;
-  reason: "new" | "retry";
+  reason: "new" | "retry" | "rescreen";
+};
+
+export type ImportSubmissionsPayload = {
+  postingId: string;
 };
 
 export type JobPayload<K extends JobKind> = K extends "screen_application"
   ? ScreenApplicationPayload
-  : never;
+  : K extends "import_submissions"
+    ? ImportSubmissionsPayload
+    : never;
 
 export type JobRow = {
   id: string;
