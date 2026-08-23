@@ -1,6 +1,6 @@
 # Ziphyre — Current State
 
-**Updated:** 22 August 2026
+**Updated:** 23 August 2026
 **Purpose:** Session handoff. Where the build actually is, what's next, and
 what's outstanding. Everything durable lives in the documents below — this
 file is deliberately just the moving parts.
@@ -55,9 +55,15 @@ Working and verified in the browser, not just typechecked:
 - FR-47 (unreadable CV) verified with a real case: a legacy `.doc` upload
   lands at Needs manual review with its own specific reason, never a score.
 
-**Next: M3 — Google.** Connection, form matching, the import job, the
-unmatched-submission queue. First real submission reaching the pipeline
-unaided.
+**M3 (Google) — code complete, NOT yet verified end to end.** Connection,
+form matching, the `import_submissions` job, and the unmatched queue are
+built, typecheck clean, and merged to `main`. What has *not* happened is the
+milestone's actual exit bar: a real submission reaching the pipeline unaided.
+That is blocked on the Google Form existing (see `docs/google-form-setup.md`)
+and on the OAuth test-user fix in Outstanding #10.
+
+**Next after that: M4 — Pipeline.** Stages, batch actions, disposition, CV
+viewer, reassignment.
 
 ---
 
@@ -87,16 +93,16 @@ baseline's "treat CA as a hard gate" scenario). Compared to
 
 ---
 
-## Verified state, 22 Aug 2026
+## Verified state, 23 Aug 2026
 
-**Git:** on `feature/m1-postings-openings`, tracking `origin/feature/m1-postings-openings`,
-in sync as of the last commit. M2's changes (below) are uncommitted as of this
-writing.
+**Git:** on `main`, in sync with `origin/main`. M1+M2 merged; M3 committed
+directly on top.
 
-**Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): 13 tables, RLS on all.
+**Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): 15 tables, RLS on all.
 `organization`, `app_user`, `membership`, `posting`, `opening`, `jd_version`,
 `requirement`, `provider_settings`, `candidate`, `application`, `screening`,
-`stage_event`, `job` — plus a private `cvs` Storage bucket.
+`stage_event`, `job`, `google_connection`, `unmatched_submission` — plus a
+private `cvs` Storage bucket.
 
 **Providers configured**, in fallback order:
 
@@ -159,6 +165,26 @@ Removing it brings back "Setting up fake worker failed" on every PDF.
 Already fixed — noted because a future middleware→proxy.ts migration (see
 #3 below) must carry this exclusion forward, or cron silently stops working
 in production while looking fine locally.
+
+**10. The Google OAuth app is in Testing mode. Two consequences.**
+Hit on first connect, 23 Aug 2026: `Error 403: access_denied` — *"has not
+completed the Google verification process… can only be accessed by
+developer-approved testers."*
+
+- **Every Google account that connects must be on the test-user list.**
+  Cloud Console → OAuth consent screen → Audience → Test users. Sign-in had
+  worked for `saiphanimba09@gmail.com` before because that grant was already
+  consented; adding the Drive/Sheets/Forms scopes forces a fresh consent,
+  which re-checks the list.
+- **Refresh tokens expire after 7 days while in Testing.** The connection
+  will flip itself to `needs_reconnect` roughly weekly and the import job
+  will stop. That is Google's policy, *not* a bug in
+  `getAccessToken`/`invalid_grant` handling — don't go hunting for one.
+  Reconnecting fixes it each time.
+
+Both go away only by publishing the app, which for these sensitive scopes
+requires Google's verification review. Fine to stay in Testing for the pilot;
+it must be resolved before real customers connect their own accounts.
 
 ---
 
