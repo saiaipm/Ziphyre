@@ -11,7 +11,19 @@ import { NextResponse, type NextRequest } from "next/server";
 // /api/cron is guarded by its own bearer-token check (CRON_SECRET),
 // not a user session — Vercel Cron never carries one. Without this,
 // every cron invocation would redirect to /sign-in and never run.
-const PUBLIC_PATHS = ["/sign-in", "/auth", "/no-access", "/api/cron"];
+//
+// /apply and /api/apply are the product's only genuinely public surface
+// (tech spec §5.1). Candidates have no account and never sign in, so
+// gating them here would make applying impossible. Their handlers do
+// their own validation and never touch the database as `anon`.
+const PUBLIC_PATHS = [
+  "/sign-in",
+  "/auth",
+  "/no-access",
+  "/api/cron",
+  "/apply",
+  "/api/apply",
+];
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });

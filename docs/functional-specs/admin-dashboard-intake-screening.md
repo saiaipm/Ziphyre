@@ -1,15 +1,15 @@
 # Functional Spec — Screening Desk
 
-**Source:** `ProductNotes/PN-001-admin-dashboard-and-screening.md`
+**Source:** `ProductNotes/PN-001-admin-dashboard-and-screening.md`, revised by `ProductNotes/PN-002-native-application-form.md`
 **Product truth:** `ProductContext.md` v1.1
 **Baseline for validation:** `Testing/baseline-ranking-CA-role.md`
-**Status:** Draft 1 · 15 August 2026
+**Status:** Draft 6 · 23 August 2026
 
 ---
 
 ## 1. Feature name & one-liner
 
-**Screening Desk** — the admin's single workspace where applications arriving through a Google Form are screened automatically against the job description, scored on five named components, and worked through a pipeline that can be filtered and exported.
+**Screening Desk** — the admin's single workspace where applications arriving through Ziphyre's own application page are screened automatically against the job description, scored on five named components, and worked through a pipeline that can be filtered and exported.
 
 ---
 
@@ -46,7 +46,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 | **Meera** (HR Generalist) | Primary. Admin. | Lives in the pipeline daily. Every design trade-off resolves in her favour. |
 | **Rahul** (Founder) | Secondary. Admin. | The home overview — "is hiring moving?" answered in one glance, on a phone, without generating work for Meera. |
 
-**Not served in this build.** **Priya** (Candidate) receives Google's own form receipt and nothing more — candidate-facing status is a later build. **Arjun** (Hiring Manager) and **Sana** (External Recruiter) have no access; they receive exported files from Meera.
+**Not served in this build.** **Priya** (Candidate) applies on Ziphyre's application page and sees a confirmation, and nothing more — candidate-facing status is a later build. **Arjun** (Hiring Manager) and **Sana** (External Recruiter) have no access; they receive exported files from Meera.
 
 ---
 
@@ -54,10 +54,9 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 ### In scope (v1)
 
-- Connecting a Google account, once
 - Creating postings and the openings inside them
 - Attaching a job description per opening, and marking its requirements must-have or preferred
-- The Ziphyre form template, and connecting a copied form to a posting
+- A Ziphyre-hosted application page per posting, shared as a link
 - Automatic screening on arrival: five components, overall score, must-have check, assessment summary
 - Manual CV upload, single and bulk
 - Pipeline per opening: five stages, individual and batch movement, optional disposition
@@ -69,14 +68,15 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 ### Out of scope (v1)
 
-- Anything candidate-facing beyond Google's form receipt
+- Anything candidate-facing beyond the application page and its confirmation
+- Candidate accounts, sign-in, or any way for a candidate to return to a submitted application
+- A public index of postings, a browsable careers page, or role search
 - Outreach, acknowledgements, rejection messages
 - Interview scheduling
 - Any access level other than a single Admin
 - Custom form fields per posting
 - Custom scoring weights per opening
 - Saved filter views
-- Ziphyre creating the Google Form itself
 - Charts, time-to-hire, funnel analytics
 - **Analytics, event tracking, or usage instrumentation of any kind** — nothing observes how the product is used
 
@@ -84,7 +84,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 | Theme | What |
 |---|---|
-| Next | Ziphyre generates the form directly, removing template-copying and dropdown sync entirely |
+| Next | Verifying the candidate's email address, most likely by one-time code (see PN-002 Decision 3) |
 | Next | Custom weights per opening, and custom form fields |
 | Later | Hiring Team Member and External Recruiter access (ProductContext §7) |
 | Later | Candidate status transparency (Pillar 6) |
@@ -117,12 +117,9 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 ## 6. Functional requirements
 
-### Connecting Google
+### Connecting Google — retired
 
-**FR-1** Meera can connect one Google account to the workspace.
-**FR-2** The connected account is displayed, and can be replaced or disconnected.
-**FR-3** Until an account is connected, creating a posting is unavailable, with an on-screen explanation of why.
-**FR-4** If the connection stops working, every affected posting shows a reconnection prompt, and existing applications remain fully readable and workable.
+**FR-1 – FR-4** *Retired 23 August 2026 (Draft 6).* Ziphyre no longer connects to a Google account to receive applications, and no longer holds Drive, Sheets or Forms scopes. Candidates apply on a page Ziphyre hosts — **FR-87** onward. Admin sign-in still uses Google, but through basic sign-in scopes only, which require no connection step and no consent beyond identity.
 
 ### Postings and openings
 
@@ -145,33 +142,24 @@ Validated against the seven real Chartered Accountant applicants and the human r
 **FR-17** The requirement list is viewable and editable after applications have arrived.
 **FR-18** Editing the requirement list or the job description offers a rescreen of that opening's applications. It is never performed automatically.
 
-### The form template
+### The form template — retired
 
-**FR-19** Ziphyre provides a form template containing exactly the fixed field set, ready to copy.
-**FR-20** The template requires Google sign-in and does not restrict respondents to one response.
-**FR-21** The template contains: full name, email, current location, willingness to relocate, work experience (years and months), notice period, current CTC, expected CTC, CV upload, and the opening applied for.
-**FR-22** Work experience is captured as two numbers: years (0 or more) and months (0 to 11). Values outside these ranges are rejected at submission with a message.
-**FR-23** Willingness to relocate offers exactly three answers: Yes, No, Open to discussing.
-**FR-24** CV upload accepts PDF, DOC and DOCX.
-**FR-25** Meera can view the list of openings she configured for a posting, in a form suitable for copying into the form's dropdown.
+**FR-19 – FR-25** *Retired 23 August 2026 (Draft 6).* There is no template to copy. The fields these requirements described now live on Ziphyre's own application page and are restated as **FR-90 – FR-94**.
 
-### Connecting a form to a posting
+### Connecting a form to a posting — retired
 
-**FR-26** Meera selects the form for a posting from a list of forms on the connected Google account. No link is typed or pasted.
-**FR-27** Ziphyre compares the form's opening options against the openings configured for the posting and reports any that do not match.
-**FR-28** A submission naming an opening Ziphyre does not recognise is retained and shown as **Unmatched**, never discarded.
-**FR-29** Meera can assign an unmatched application to any opening in the posting; assigning it triggers screening.
+**FR-26 – FR-29** *Retired 23 August 2026 (Draft 6).* Nothing is connected, so nothing can mismatch. Openings are read from the posting itself (**FR-89**), which makes an unrecognised opening structurally impossible and retires the Unmatched concept entirely.
 
 ### Intake
 
-**FR-30** New form submissions appear in the pipeline without Meera refreshing, importing, or taking any action.
+**FR-30** New applications appear in the pipeline without Meera refreshing, importing, or taking any action.
 **FR-31** Meera can add a candidate manually by uploading a CV into a specific opening.
 **FR-32** Meera can upload multiple CVs at once into a single opening.
-**FR-33** For a manually added candidate, every form field displays as **Not provided**, visually distinct from an empty value.
+**FR-33** For a manually added candidate, every application field displays as **Not provided**, visually distinct from an empty value.
 **FR-34** Meera can fill in any Not provided field by hand, and edit it afterwards.
-**FR-35** Manually added candidates are screened by exactly the same process as form submissions.
-**FR-36** A repeat submission from the same verified email to the same opening updates the existing application rather than creating a second one. The application is flagged as updated, the previous CV is retained and viewable, and a rescreen is offered.
-**FR-37** The same verified email appearing against different openings is recognised as one Candidate with multiple applications.
+**FR-35** Manually added candidates are screened by exactly the same process as candidates who apply themselves.
+**FR-36** *Retired 23 August 2026 (Draft 6).* A repeat submission no longer updates the existing application. A candidate holds one application per opening and a second attempt is refused outright — **FR-95**.
+**FR-37** The same email address appearing against different openings is recognised as one Candidate with multiple applications.
 
 ### Screening
 
@@ -211,10 +199,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 **FR-59** Every stage change records who made it and when, and is viewable on the application.
 **FR-60** Meera can reassign an application to a different opening within the same posting; reassignment offers a rescreen against the new opening's job description.
 **FR-61** The CV is readable inside the dashboard alongside the assessment, without navigating away.
-**FR-62** A link to open the original CV file in Google Drive is available.
-**FR-63** Ziphyre never writes to the response sheet.
-**FR-64** Where a response row is edited at source, the updated answers are reflected in the application.
-**FR-65** Where a response row is deleted at source, the application is retained and flagged as no longer present at source.
+**FR-62 – FR-65** *Retired 23 August 2026 (Draft 6).* All four described Ziphyre's relationship with a Google Sheet and Drive it no longer reads: the original-file link, the never-write guarantee, and reflecting edits and deletions made at source. Ziphyre now holds the only copy of every CV, so there is no "source" to diverge from — which makes the retention rule the load-bearing obligation instead.
 
 ### Filtering and sorting
 
@@ -226,7 +211,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 ### Export
 
-**FR-71** Meera can export as a spreadsheet (CSV or Excel) containing all form answers, all five component ratings, the overall score, must-have result, stage, disposition and date received.
+**FR-71** Meera can export as a spreadsheet (CSV or Excel) containing all application answers, all five component ratings, the overall score, must-have result, stage, disposition and date received.
 **FR-72** Meera can export as a document (PDF) presenting each candidate with their scores, must-have result and assessment summary, in the order currently shown on screen.
 **FR-73** Meera can optionally include the CV files with any export.
 **FR-74** Meera can export everything matching the current filters, or only the applications she has selected.
@@ -239,6 +224,23 @@ Validated against the seven real Chartered Accountant applicants and the human r
 **FR-78** Selecting an opening opens its pipeline.
 **FR-79** The home screen is readable and usable on a phone.
 **FR-80** Closed postings are visually distinct from open ones and can be hidden.
+
+### The application page
+
+**FR-87** Every posting has its own application link, generated by Ziphyre when the posting is created. There is no form to build, copy, or connect.
+**FR-88** Meera can view and copy the application link, and can regenerate it. Regenerating invalidates the previous link immediately.
+**FR-89** The application page lists the posting's openings, read from the posting itself. The candidate selects the one they are applying for. An opening with no job description is not offered, since it cannot yet receive applications (**FR-8**).
+**FR-90** The page collects: full name, email, current location, willingness to relocate, work experience in years and months, notice period, current CTC, expected CTC, and a CV.
+**FR-91** Every field is required, the CV included. A submission missing anything is refused, naming what is missing.
+**FR-92** Work experience is captured as two numbers: years (0 or more) and months (0 to 11). Values outside these ranges are rejected with a message.
+**FR-93** Willingness to relocate offers exactly three answers: Yes, No, Open to discussing.
+**FR-94** The CV must be a PDF or a DOCX file of 1 MB or less. Both limits are stated before the candidate chooses a file, and anything else is refused. DOC is deliberately excluded: Ziphyre cannot extract text from it, and accepting a file that can only ever fail screening would be dishonest.
+**FR-95** A candidate holds at most one application per opening. A second attempt using the same email address is refused with a plain explanation. It never replaces, merges with, or overwrites the first.
+**FR-96** On submitting, the candidate immediately sees confirmation. Screening runs afterwards; the candidate never waits for it.
+**FR-97** The application page states what is collected, what it is used for, and how long it is kept.
+**FR-98** The application page is fully usable on a phone.
+**FR-99** No screening output — scores, assessments, must-have results, or anything about any other candidate — is ever visible on the application page.
+**FR-100** A closed posting's link accepts no applications and says so plainly.
 
 ### Settings
 
@@ -255,9 +257,9 @@ Validated against the seven real Chartered Accountant applicants and the human r
 ### Flow A — First run
 
 1. Meera signs in to an empty workspace.
-2. She is asked to connect a Google account. → *Branch: she skips.* Posting creation stays unavailable with an explanation, and everything else is browsable but empty.
-3. She connects the account.
-4. Home shows the empty state and a single call to action: create the first posting.
+2. Home shows the empty state and a single call to action: create the first posting.
+
+*There is no third step. Removing the Google connection removed the entire setup phase.*
 
 ### Flow B — Create a posting and start receiving applications
 
@@ -268,19 +270,16 @@ Validated against the seven real Chartered Accountant applicants and the human r
 5. She reviews the list: edits wording, deletes what doesn't matter, adds anything missed.
 6. She marks each requirement Must-have or Preferred.
 7. She repeats steps 2–6 for any further openings.
-8. She copies the Ziphyre form template into her own Google account and adds the openings to its dropdown, using the list Ziphyre gives her.
-9. She returns and selects that form from the list of her forms.
-10. Ziphyre compares the form's opening options against her configured openings. → *Branch: mismatch.* The specific differences are named, and she can fix the form and re-check, or continue and handle unmatched applications later.
-11. She shares the form link wherever she advertises.
+8. Ziphyre shows her the posting's application link. She copies it and shares it wherever she advertises. → *Branch: no opening has a job description yet.* The link is shown but Ziphyre says nobody can apply until at least one opening has one.
 
 ### Flow C — An application arrives
 
-1. A candidate submits the form.
-2. The application appears in the pipeline at stage New, screening in progress.
-3. Screening completes → stage becomes Screened, with five components, overall score, must-have result and assessment summary.
+1. A candidate opens the link, picks the role, fills in every field and attaches a CV.
+2. They submit and immediately see confirmation. Nothing keeps them waiting.
+   - *Branch: they have already applied for that role.* The attempt is refused and plainly explained. Nothing reaches the pipeline and the earlier application is untouched.
+3. The application appears in Meera's pipeline at stage New, screening in progress.
+4. Screening completes → stage becomes Screened, with five components, overall score, must-have result and assessment summary.
    - *Branch: screening cannot run.* Stays at New, flagged Needs manual review with the reason. Meera can retry or work it by hand.
-   - *Branch: unrecognised opening.* Held as Unmatched until Meera assigns it, which then triggers screening.
-   - *Branch: repeat submission.* The existing application is updated and flagged; the previous CV is kept; a rescreen is offered.
 
 ### Flow D — Working the pile
 
@@ -296,7 +295,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 1. Meera chooses to add candidates to an opening manually.
 2. She uploads one or several CVs.
-3. Each becomes an application at New with every form field showing Not provided.
+3. Each becomes an application at New with every application field showing Not provided.
 4. Screening runs as normal.
 5. She optionally fills in experience, location, notice period and CTC by hand so the candidate appears in filters.
 
@@ -318,19 +317,6 @@ Validated against the seven real Chartered Accountant applicants and the human r
 |---|---|
 | Product area name | Screening Desk |
 | Primary nav | Home · Postings · Settings |
-
-### Connecting Google
-
-| Element | Copy |
-|---|---|
-| Prompt heading | Connect your Google account |
-| Body | Ziphyre reads applications from your Google Forms and opens the CVs candidates upload. It never edits your form or your responses. |
-| Button | Connect Google account |
-| Connected state | Connected as {email} |
-| Secondary action | Use a different account |
-| Blocked posting creation | Connect a Google account to create your first posting. |
-| Connection broken | Ziphyre has lost access to your Google account. New applications aren't coming through. Existing candidates are unaffected. |
-| Reconnect button | Reconnect |
 
 ### Posting and opening setup
 
@@ -369,21 +355,43 @@ Validated against the seven real Chartered Accountant applicants and the human r
 | Edit-after-applications prompt | You've changed what this role requires. Rescreen the {n} applications already in? |
 | Rescreen buttons | Rescreen now · Leave them as they are |
 
-### Form setup
+### The application link — what Meera sees
 
 | Element | Copy |
 |---|---|
-| Heading | Connect your application form |
-| Step 1 | Copy our template into your Google account. |
-| Template button | Open the Ziphyre template |
-| Step 2 | Add your openings to the form's "Role applied for" dropdown. |
-| Openings list label | Copy these, exactly as written |
-| Step 3 | Come back and pick your form below. |
-| Form picker label | Choose your form |
-| Match confirmed | Your form's openings match this posting. |
-| Mismatch warning | These openings are in your form but not in this posting: {list}. Applications naming them will need assigning by hand. |
-| Mismatch secondary | These openings are in this posting but not in your form: {list}. Nobody can apply to them yet. |
-| Continue anyway | Continue anyway |
+| Heading | Your application link |
+| Body | Share this wherever you advertise. Candidates apply here — there's nothing to set up. |
+| Copy button | Copy link |
+| Copied confirmation | Link copied |
+| Regenerate | Generate a new link |
+| Regenerate warning | The current link stops working straight away. Anyone who already has it won't be able to apply. |
+| No openings ready | Add a job description to at least one opening — until then, nobody can apply through this link. |
+| Closed posting | This posting is closed. The link no longer accepts applications. |
+
+### The application page — what the candidate sees
+
+The posting name is Meera's own label ("Finance hiring, August") and is never shown to candidates. The organisation's name is.
+
+| Element | Copy |
+|---|---|
+| Heading | Apply to {organisation} |
+| Required note | Every question is required. |
+| Opening label | Which role are you applying for? |
+| Experience labels | Years of work experience · Additional months (0–11) |
+| Relocate label | Are you willing to relocate? |
+| Relocate options | Yes · No · Open to discussing |
+| CV label | Your CV |
+| CV help | PDF or Word (.docx), up to 1 MB. |
+| CV too large | That file is over 1 MB. Please choose a smaller one. |
+| CV wrong type | Please choose a PDF or a Word (.docx) file. |
+| Missing field | Please fill this in. |
+| Submit button | Submit application |
+| Submitting | Submitting… |
+| Success heading | Application received |
+| Success body | Thanks — your application has gone to {organisation}. |
+| Already applied | You've already applied for this role. |
+| Posting closed | This role isn't accepting applications any more. |
+| Privacy note | {organisation} will use what you share here to consider you for this role. Your details are kept for six months after the role closes, and then deleted. |
 
 ### Pipeline
 
@@ -401,8 +409,6 @@ Validated against the seven real Chartered Accountant applicants and the human r
 | Not provided | Not provided |
 | Updated application | Updated {date} — candidate resubmitted |
 | Previous CV link | View previous CV |
-| Source row deleted | This response was deleted from your sheet. The candidate stays here. |
-| Unmatched banner | {n} applications named a role that isn't in this posting. Assign them to continue. |
 | Assign button | Assign to an opening |
 | Provenance tooltip | Screened {date} against job description version {n}, using {provider}. |
 
@@ -492,21 +498,20 @@ Validated against the seven real Chartered Accountant applicants and the human r
 | **Loading — bulk upload** | Each CV appears as it is added; progress is visible; a failure on one does not stop the rest |
 | **Error — screening cannot run** | Stays at New, flagged Needs manual review, plain-language reason, retry available |
 | **Error — no AI key** | Same as above with the reason stated as a settings problem, plus a persistent settings warning |
-| **Error — Google access lost** | Banner on affected postings; new applications stop; existing candidates and CVs remain readable |
-| **Error — CV file won't open** | The assessment still displays; the CV pane explains it can't be shown and offers the Drive link |
+| **Error — CV file won't open** | The assessment still displays; the CV pane explains it can't be shown |
 | **Single vs many** | Every stage action, disposition and export behaves identically for one candidate and for fifty |
 | **Very large pipeline** | Filtering and sorting remain usable at several hundred applications per opening |
-| **Unmatched application** | Held visibly at the top of the posting, never inside an opening's pipeline, never discarded |
-| **Duplicate submission** | Existing application updated and flagged; previous CV retained; rescreen offered; no second row |
+| **Duplicate submission** | Refused at the point of submitting, with a plain explanation. The existing application is untouched and nothing new reaches the pipeline |
+| **Application link, nothing to apply to** | No opening has a job description yet. The page explains that applications aren't open, rather than showing an empty role list |
+| **Application link, posting closed** | The page says the role is no longer accepting applications. No form is shown |
+| **Candidate on a phone** | Fully supported. Most candidates will apply this way |
 | **Manually added candidate** | All form fields read Not provided; excluded from field filters with the exclusion counted and viewable |
-| **Source row deleted** | Application retained and flagged; still fully workable |
-| **Source row edited** | Updated answers reflected; screening is not re-run automatically |
 | **Opening with no must-haves** | Must-have check reports that none were set; no candidate is flagged |
 | **Closed posting** | Marked closed; no new applications; pipeline fully workable |
 | **Desktop** | Full experience: pipeline, screening review, filters, export |
 | **Phone** | Home overview readable and usable. Pipeline and review are not designed for phone in this build and say so rather than degrading silently |
 | **Signed out** | Nothing is accessible; no candidate data is reachable without signing in |
-| **Public** | No part of this feature is publicly reachable. Candidates interact only with Google Forms |
+| **Public** | Exactly one surface is publicly reachable: the application page, at an unguessable per-posting link. It accepts a submission and shows a confirmation. It exposes no candidate, no score, and no posting other than its own |
 
 ---
 
@@ -514,8 +519,8 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 ### Identity and uniqueness
 
-- A **Candidate** is identified by verified email address.
-- One application per candidate per opening. A repeat submission updates the existing application; it never creates a second.
+- A **Candidate** is identified by the email address they give. **It is not verified in this version** — see PN-002 Decision 3 for what that trades away and why it was accepted.
+- One application per candidate per opening. A second attempt is refused; it never creates a second application, and never replaces the first.
 - The same candidate may hold applications against several openings, in the same posting or different ones, and is recognised as one person.
 - An opening belongs to exactly one posting. A posting has exactly one form.
 
@@ -526,8 +531,9 @@ Validated against the seven real Chartered Accountant applicants and the human r
 | Work experience — years | Whole number, 0 or greater |
 | Work experience — months | Whole number, 0 to 11 |
 | Willingness to relocate | Exactly one of Yes, No, Open to discussing |
-| CV upload | PDF, DOC or DOCX |
-| Email | Verified through Google sign-in; unverified submissions are not possible |
+| CV upload | PDF or DOCX, 1 MB maximum. Required |
+| Email | Required, and must look like an email address. Not verified in this version |
+| Every other application field | Required. Partial submissions are not accepted |
 | Job description | Required before an opening can receive applications |
 | Posting name, opening title, opening location | Required, non-empty |
 
@@ -558,7 +564,6 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 - Screening never changes a stage other than New → Screened.
 - Screening never removes, hides or rejects an application.
-- Ziphyre never writes to the response sheet.
 - Rescreening is always offered, never automatic.
 - Exports always carry the internal-use marker.
 
@@ -570,25 +575,23 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 | Step | What Meera does |
 |---|---|
-| 1 | Connects a Google account, once for the workspace |
-| 2 | Creates a posting and names it |
-| 3 | Adds each opening: title, work location, job description |
-| 4 | Reviews the proposed requirements per opening — edits, deletes, adds |
-| 5 | Marks each requirement Must-have or Preferred |
-| 6 | Copies the Ziphyre form template into her Google account |
-| 7 | Copies her openings into the form's dropdown |
-| 8 | Picks that form in Ziphyre and resolves any mismatch |
-| 9 | Shares the form link |
+| 1 | Creates a posting and names it |
+| 2 | Adds each opening: title, work location, job description |
+| 3 | Reviews the proposed requirements per opening — edits, deletes, adds |
+| 4 | Marks each requirement Must-have or Preferred |
+| 5 | Copies the application link and shares it |
+
+*Nine steps in Draft 5, five here. Steps 1 and 6–8 were all Google.*
 
 ### Fields Meera controls
 
 | Object | Fields |
 |---|---|
-| Posting | Name · openings · connected form · open/closed |
+| Posting | Name · openings · application link · open/closed |
 | Opening | Title · work location · job description · requirement list with must-have marks |
 | Requirement | Wording · Must-have or Preferred |
 | Application | Stage · disposition · note · any Not provided field she chooses to fill · which opening it belongs to |
-| Settings | Google account · AI provider · key |
+| Settings | AI provider · key |
 
 ### Create, edit, delete
 
@@ -659,12 +662,12 @@ Stated as a person would experience them.
 
 | Pillar | How this feature touches it |
 |---|---|
-| **Roles & Application Intake** | Fully realised here: postings, openings, job descriptions, requirements, form intake, manual upload |
+| **Roles & Application Intake** | Fully realised here: postings, openings, job descriptions, requirements, the hosted application page, manual upload |
 | **Screening & Scoring** | Fully realised here: components, overall score, must-have check, assessment |
 | **Pipeline Tracking & Shortlisting** | Fully realised here: stages, batch actions, filtering, export |
 | **Communication & Outreach** | Not touched. Nothing is sent to any candidate |
 | **Interview Scheduling** | Not touched |
-| **Candidate Transparency** | Not touched. Priya sees only Google's form receipt |
+| **Candidate Transparency** | Barely touched. Priya sees the application page and its confirmation, and nothing after that |
 
 ### Concepts used
 
@@ -676,7 +679,7 @@ Posting · Opening · Application · Candidate · Stage · Screening score · Sc
 |---|---|
 | **Screening status** | Whether screening has run on an application: in progress, complete, or needs manual review. Distinct from stage |
 | **Needs manual review** | An application whose CV could not be screened. Stays at New, never scored, never dropped |
-| **Unmatched application** | A submission naming an opening that doesn't exist in the posting. Held for assignment |
+| **Application link** | The per-posting public link candidates apply through. Generated by Ziphyre, shared by the admin, regenerable |
 | **Component rating** | One of the five 0–10 ratings — JD Fit, Experience, Skills, Qualification, Location — that average to the overall score |
 | **Provenance** | The job description version and AI provider that produced a given score |
 
@@ -684,23 +687,21 @@ Posting · Opening · Application · Candidate · Stage · Screening score · Sc
 
 | Service | Used for | If it fails |
 |---|---|---|
-| **Google Forms** | Candidates apply | No new applications arrive. Existing pipeline unaffected. Meera sees a banner naming the affected postings |
-| **Google Sheets** | Where submissions land | Same as above. Ziphyre never writes here, so nothing is corrupted by an outage |
-| **Google Drive** | Where uploaded CVs live | Assessments and scores stay readable; the CV pane explains it can't display the file and offers a direct link |
-| **AI provider (OpenAI, Google Gemini or NVIDIA NIM)** | Screening | New applications arrive unscreened, flagged Needs manual review with the reason. Nothing is lost; Meera can retry once the provider is available. Existing scores are unaffected |
+| **Google sign-in** | Admin sign-in only — basic identity scopes, no Drive, Sheets or Forms access | Meera cannot sign in. Candidates are unaffected: the application page needs no Google account, on either side |
+| **AI provider (OpenAI, Google Gemini or NVIDIA NIM)** | Screening | Applications still arrive and are kept, unscreened and flagged Needs manual review with the reason. Meera can retry once the provider is back. Existing scores are unaffected |
 
-**A principle across all four:** an external failure may delay screening, never lose a candidate.
+**Intake now depends on no third party at all.** An application reaching Ziphyre involves only Ziphyre. The principle that survives from the previous draft: an external failure may delay screening, never lose a candidate.
 
 ---
 
 ## 15. Assumptions
 
-1. New submissions surfacing within a couple of minutes is fast enough; near-instant arrival is not required.
+1. An application appears in the pipeline the moment it is submitted; the candidate waits only for the confirmation, never for screening.
 2. Editing the requirement list follows the same rule as editing the job description — a rescreen is offered, never automatic.
-3. A repeat submission is more likely to be a corrected CV than a different person sharing an email, so updating in place with the earlier CV retained is the safer default.
+3. A candidate who submits twice for the same role is most often unsure the first attempt worked, so refusing the second and telling them they have already applied answers the real question. Superseded assumption from Draft 5: that a repeat was likely a corrected CV worth merging.
 4. Meera and Rahul share one identical Admin level; no capability needs withholding from either.
-5. Openings within one posting are advertised together, so one shared form link is sufficient.
-6. Candidates applying for MSME roles will tolerate Google sign-in. Manual upload covers those who won't.
+5. Openings within one posting are advertised together, so one shared application link is sufficient.
+6. Candidates will give a real email address without being made to prove it. Refusing a duplicate application is enough to stop the honest mistakes; PN-002 Decision 3 records what is given up by not verifying, and email verification is the fix if the assumption fails.
 7. Several hundred applications per opening is the realistic ceiling for this market; tens of thousands is not a case worth designing for now.
 8. The customer supplying their own AI key is acceptable friction in exchange for cost and data control.
 9. Equal component weighting is a starting point, not a settled answer. The CA test set will show whether it holds.
@@ -720,21 +721,25 @@ Posting · Opening · Application · Candidate · Stage · Screening score · Sc
 
 ### Setup
 
-- [ ] A workspace with no Google account connected cannot create a posting, and says why — **FR-3**
-- [ ] Losing Google access stops new applications but leaves existing candidates and CVs fully readable — **FR-4**
-- [ ] An opening without a job description cannot receive applications — **FR-8**
+- [ ] A brand-new workspace can create a posting immediately, with no connection or setup step first — **FR-87**
+- [ ] An opening without a job description cannot receive applications, and is not offered on the application page — **FR-8, FR-89**
 - [ ] Attaching a job description produces a proposed requirement list that can be edited, deleted from and added to — **FR-13, FR-14**
 - [ ] Requirements can be marked Must-have or Preferred, and default to Preferred — **FR-15**
-- [ ] Selecting a form whose openings don't match the posting names the specific differences — **FR-27**
+- [ ] A posting exposes an application link that can be copied, and regenerating it stops the old one working — **FR-87, FR-88**
 - [ ] Deleting a posting with applications requires confirmation naming the candidate count; deleting an empty one does not claim candidates are affected — **FR-84**
 
 ### Intake
 
-- [ ] A form submission appears in the pipeline without any manual action — **FR-30**
+- [ ] An application submitted through the link appears in the pipeline without any manual action — **FR-30**
+- [ ] The candidate sees confirmation immediately, without waiting for screening — **FR-96**
+- [ ] A submission missing any field, or missing a CV, is refused and names what is missing — **FR-91**
+- [ ] A CV over 1 MB, or in any format other than PDF or DOCX, is refused before upload — **FR-94**
 - [ ] Several CVs can be uploaded at once, and one failure doesn't stop the others — **FR-32**
 - [ ] A manually added candidate shows Not provided, visibly different from empty — **FR-33**
-- [ ] A second submission from the same email to the same opening updates the existing application and retains the earlier CV — **FR-36**
-- [ ] A submission naming an unknown opening is held as Unmatched, not discarded — **FR-28**
+- [ ] A second submission from the same email to the same opening is refused, and the first application is untouched — **FR-95**
+- [ ] The same email applying to two different openings produces two applications and one candidate — **FR-37**
+- [ ] A closed posting's link accepts nothing and says so — **FR-100**
+- [ ] The application page shows no score, assessment, or other candidate, on any path — **FR-99**
 
 ### Screening
 
@@ -754,7 +759,6 @@ Posting · Opening · Application · Candidate · Stage · Screening score · Sc
 - [ ] Twenty candidates can be rejected in one action, with disposition skippable — **FR-56, FR-57**
 - [ ] A CV is readable beside its assessment without leaving the pipeline — **FR-61**
 - [ ] Deleting a response row at source leaves the application present and flagged — **FR-65**
-- [ ] Nothing Ziphyre does writes to the response sheet — **FR-63**
 
 ### Filtering and export
 
@@ -786,7 +790,7 @@ Posting · Opening · Application · Candidate · Stage · Screening score · Sc
 | Stage | What | Exit condition |
 |---|---|---|
 | **1. Internal, seeded** | The seven CA CVs loaded by manual upload against the real pilot job description. No form connected, no live candidates | Screening output compared against `Testing/baseline-ranking-CA-role.md`. Ranking is trustworthy or the scoring model changes before anyone else sees it |
-| **2. Internal, live form** | One real posting, real form, real applicants, used by Meera on an actual open role | A full role worked end to end: applications arrive, get screened, get shortlisted, get exported — without anyone touching a spreadsheet |
+| **2. Internal, live link** | One real posting, real applicants applying through the link, used by Meera on an actual open role | A full role worked end to end: applications arrive, get screened, get shortlisted, get exported — without anyone touching a spreadsheet |
 | **3. Design partners** | A small number of MSMEs with hands-on setup support | They complete setup without help, and come back to the pipeline unprompted |
 | **4. General** | Open | — |
 
@@ -797,7 +801,6 @@ No dark launch and no admin-only preview: there is no existing product to hide t
 - The pilot Chartered Accountant job description — already in hand
 - The seven CA applicant CVs — already in hand
 - **A deliberately unreadable CV** — a photographed or scanned document. This does not yet exist, and without it FR-47 cannot be tested. All seven current CVs parse cleanly
-- The Ziphyre form template, published and copyable
 - Default disposition list as specified in FR-58
 
 ### Risks at rollout
@@ -805,8 +808,9 @@ No dark launch and no admin-only preview: there is no existing product to hide t
 | Risk | Handling |
 |---|---|
 | Screening ranking is not trustworthy | Stage 1 exists precisely to catch this before any customer sees it. Weighting and component definitions change before stage 2 |
-| Setup is too fiddly — template copying, dropdown syncing | Watch stage 3 closely. This is the strongest argument for Ziphyre generating the form itself, already queued as the next build |
-| Candidates drop off at Google sign-in | With no instrumentation, this surfaces by asking — admins hearing from candidates who couldn't apply, and applicant counts that look lower than the reach of the shared link. Manual upload is the mitigation already built |
+| Junk or bot submissions reach the pipeline | The application page is the product's only public surface and has no sign-in wall. Every field required, a CV required, a 1 MB cap, an unguessable link and per-IP rate limiting are the defences. Watch stage 2. A challenge page, then email verification, are the next controls if volume becomes real |
+| A candidate is blocked by someone who applied using their address | Possible because email is unverified (PN-002 Decision 3). It fails loudly — the real candidate is told they have already applied — so it surfaces through the admin rather than silently. Email verification is the fix if it ever happens |
+| Candidates drop off mid-application | With no instrumentation, this surfaces by asking: applicant counts that look low against the reach of the shared link. The 1 MB CV cap is the most likely culprit and the easiest to relax. Manual upload remains the mitigation already built |
 
 ---
 
@@ -814,6 +818,7 @@ No dark launch and no admin-only preview: there is no existing product to hide t
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 6 | 23 Aug 2026 | **Google intake removed; Ziphyre hosts the application page itself (PN-002).** Retires FR-1–FR-4, FR-19–FR-29, FR-36 and FR-62–FR-65 — the connection step, the form template, dropdown matching, the Unmatched concept, the resubmission merge, and everything describing a Sheet we no longer read. Numbers are retired in place rather than reused, so the tech spec's traceability table stays honest. Adds **FR-87 – FR-100**: a per-posting application link, every field and the CV required, PDF/DOCX at 1 MB, one application per opening refused rather than merged, and immediate confirmation with screening running afterwards. Three consequences recorded rather than glossed: email is no longer verified, so identity is trusted rather than proven; the product gains its first public surface; and DOC uploads are now refused outright rather than accepted and failed, since screening cannot read them. Flow A loses its entire setup phase and Flow B drops from eleven steps to eight — the point of the change |
 | Draft 5 | 22 Aug 2026 | **FR-85 and FR-86 added**: multiple providers configurable at once in an explicit fallback order, tried until one succeeds; a fallback is never silent. FR-82 widened to cover adding, removing and reordering. Settings copy extended for the fallback-order list, primary badge, fallback notice and provenance line. Gemini models updated to the current 3.5–3.7 line after Google retired 2.5 for generation |
 | Draft 4 | 22 Aug 2026 | **FR-81 rewritten.** Provider list is now OpenAI, Google Gemini and NVIDIA NIM — Claude dropped, OpenRouter rejected on reliability. One model per provider, cheap/fast tier by deliberate choice, shown by official name rather than API slug. Settings copy updated with model notes, key hints and the connected state |
 | Draft 3 | 21 Aug 2026 | **FR-84** added: Meera can permanently delete a posting, with a confirmation naming the candidate count affected. Confirms as a real product decision what was previously only a tech-spec assumption. Pause/lifecycle states beyond open, closed and deleted were considered and explicitly dropped — closing remains the only way to stop a posting short of deletion |

@@ -70,10 +70,7 @@ export async function getPostingsForOrg(): Promise<PostingSummary[]> {
 
 export type PostingDetail = PostingSummary & {
   closedAt: string | null;
-  formId: string | null;
-  spreadsheetId: string | null;
-  lastImportAt: string | null;
-  openingOptionValues: string[];
+  applyToken: string;
 };
 
 export async function getPostingDetail(
@@ -83,7 +80,7 @@ export async function getPostingDetail(
   const { data: posting, error } = await supabase
     .from("posting")
     .select(
-      "id, name, status, closed_at, created_at, form_id, spreadsheet_id, last_import_at, opening (id, title, work_location, form_option_value, current_jd_version_id)",
+      "id, name, status, closed_at, created_at, apply_token, opening (id, title, work_location, current_jd_version_id)",
     )
     .eq("id", postingId)
     .maybeSingle();
@@ -112,10 +109,7 @@ export async function getPostingDetail(
     status: posting.status as "open" | "closed",
     createdAt: posting.created_at,
     closedAt: posting.closed_at,
-    formId: posting.form_id,
-    spreadsheetId: posting.spreadsheet_id,
-    lastImportAt: posting.last_import_at,
-    openingOptionValues: posting.opening.map((o) => o.form_option_value),
+    applyToken: posting.apply_token,
     openings: posting.opening.map((o) => ({
       id: o.id,
       title: o.title,
@@ -156,36 +150,4 @@ export async function getOpeningDetail(openingId: string) {
   ]);
 
   return { opening, jdVersion, requirements: requirements ?? [] };
-}
-
-export type UnmatchedRow = {
-  id: string;
-  claimedOption: string | null;
-  candidateName: string | null;
-  candidateEmail: string | null;
-};
-
-/** FR-28. Only submissions still awaiting assignment. */
-export async function getUnmatchedForPosting(
-  postingId: string,
-): Promise<UnmatchedRow[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("unmatched_submission")
-    .select("id, claimed_option, raw_answers")
-    .eq("posting_id", postingId)
-    .is("resolved_application_id", null)
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-
-  return (data ?? []).map((row) => {
-    const raw = (row.raw_answers ?? {}) as Record<string, unknown>;
-    return {
-      id: row.id,
-      claimedOption: row.claimed_option,
-      candidateName: typeof raw._fullName === "string" ? raw._fullName : null,
-      candidateEmail: typeof raw._email === "string" ? raw._email : null,
-    };
-  });
 }

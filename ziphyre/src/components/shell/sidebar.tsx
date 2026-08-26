@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   Briefcase,
   Building2,
-  Plug,
   Sparkles,
 } from "lucide-react";
 
@@ -18,7 +17,6 @@ const primaryNav = [
 
 const settingsNav = [
   { href: "/settings/organization", label: "Organization", icon: Building2 },
-  { href: "/settings/connections", label: "Connections", icon: Plug },
   { href: "/settings/screening", label: "Screening", icon: Sparkles },
 ];
 

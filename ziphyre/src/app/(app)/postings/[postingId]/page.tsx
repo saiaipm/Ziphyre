@@ -3,13 +3,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus, ArrowRight, FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getPostingDetail, getUnmatchedForPosting } from "@/lib/postings";
-import { getSessionContext } from "@/lib/session";
-import { getConnection } from "@/lib/google/auth";
+import { getPostingDetail } from "@/lib/postings";
 import { PostingActions } from "./posting-actions";
 import { PostingTitle } from "./posting-title";
-import { FormConnection } from "./form-connection";
-import { UnmatchedQueue } from "./unmatched-queue";
+import { ApplyLink } from "./apply-link";
 
 export async function generateMetadata({
   params,
@@ -31,11 +28,7 @@ export default async function PostingDetailPage({
   if (!posting) notFound();
 
   const isClosed = posting.status === "closed";
-  const session = await getSessionContext();
-  const connection = session
-    ? await getConnection(session.organization.id)
-    : null;
-  const unmatched = await getUnmatchedForPosting(postingId);
+  const hasReadyOpening = posting.openings.some((o) => o.hasJd);
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -53,10 +46,6 @@ export default async function PostingDetailPage({
         />
       </div>
 
-      <UnmatchedQueue
-        items={unmatched}
-        openings={posting.openings.map((o) => ({ id: o.id, title: o.title }))}
-      />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -111,15 +100,12 @@ export default async function PostingDetailPage({
         </div>
       </section>
 
-      {!isClosed && (
-        <FormConnection
-          postingId={posting.id}
-          openingOptions={posting.openingOptionValues}
-          googleConnected={connection?.status === "active"}
-          connectedFormId={posting.formId}
-          lastImportAt={posting.lastImportAt}
-        />
-      )}
+      <ApplyLink
+        postingId={posting.id}
+        applyToken={posting.applyToken}
+        isClosed={isClosed}
+        hasReadyOpening={hasReadyOpening}
+      />
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/session";
 import { getProviderChain } from "@/lib/provider-settings";
@@ -13,15 +13,6 @@ import type { ProviderId } from "@/lib/ai/providers";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { runQueuedJobs } from "@/lib/jobs/runner";
 import { getApplicationsForOpening, type ApplicationListItem } from "@/lib/applications";
-import {
-  listForms,
-  getFormDetail,
-  compareOptions,
-  type FormSummary,
-  type MatchReport,
-} from "@/lib/google/forms";
-import { GoogleNeedsReconnectError } from "@/lib/google/auth";
-import { attachCvFromDrive } from "@/lib/jobs/handlers/import-submissions";
 
 const ALLOWED_CV_MIME = new Set([
   "application/pdf",
@@ -102,7 +93,6 @@ export async function createPostingWithOpening(input: {
       posting_id: posting.id,
       title: openingTitle,
       work_location: workLocation,
-      form_option_value: openingTitle,
     })
     .select("id")
     .single();
@@ -144,13 +134,12 @@ export async function addOpeningToPosting(input: {
       posting_id: input.postingId,
       title: openingTitle,
       work_location: workLocation,
-      form_option_value: openingTitle,
     })
     .select("id")
     .single();
 
   if (openingError) {
-    // FR-9's unique(posting_id, form_option_value): two openings in one
+    // Two openings in one
     // posting can't share a title, since that's the form dropdown value.
     if (openingError.code === "23505") {
       return {
@@ -185,7 +174,7 @@ export async function updateOpeningDetails(input: {
   const supabase = await createClient();
   const { data: opening, error } = await supabase
     .from("opening")
-    .update({ title, work_location: workLocation, form_option_value: title })
+    .update({ title, work_location: workLocation })
     .eq("id", input.openingId)
     .select("posting_id")
     .single();
@@ -487,7 +476,7 @@ export async function deletePosting(postingId: string): Promise<ActionResult> {
 
 /**
  * FR-31/FR-32. Each file becomes one application with every form field
- * Not provided (FR-33) — manual upload has no Google-verified email,
+ * Not provided (FR-33) — manual upload has no candidate-supplied email,
  * so identity here is name-only; the candidate's email is an internal
  * placeholder the UI never shows (confirmed decision, see the M2 plan).
  * A bad file is skipped, never allowed to block the rest of the batch
@@ -597,195 +586,6 @@ export async function addCandidatesToOpening(
   return { ok: true, data: { added, skipped } };
 }
 
-// ---------------------------------------------------------------------------
-// M3 — Google form connection
-// ---------------------------------------------------------------------------
-
-function googleError(err: unknown): string {
-  if (err instanceof GoogleNeedsReconnectError) {
-    return "Ziphyre has lost access to your Google account. Reconnect it in Settings \u2192 Connections.";
-  }
-  return err instanceof Error ? err.message : String(err);
-}
-
-/** FR-26. The admin picks from their own forms; no link is ever pasted. */
-export async function listGoogleForms(): Promise<ActionResult<FormSummary[]>> {
-  const session = await getSessionContext();
-  if (!session) return { ok: false, error: "Not signed in." };
-
-  try {
-    return { ok: true, data: await listForms(session.organization.id) };
-  } catch (err) {
-    return { ok: false, error: googleError(err) };
-  }
-}
-
-/**
- * FR-27. Reports mismatches in both directions and connects the form
- * anyway — a mismatch is a warning the admin can act on, not a block.
- * Unrecognised options become unmatched submissions (FR-28), never losses.
- */
-export async function connectFormToPosting(input: {
-  postingId: string;
-  formId: string;
-}): Promise<ActionResult<MatchReport & { formTitle: string }>> {
-  const session = await getSessionContext();
-  if (!session) return { ok: false, error: "Not signed in." };
-
-  const supabase = await createClient();
-  const { data: openings, error: openingsError } = await supabase
-    .from("opening")
-    .select("form_option_value")
-    .eq("posting_id", input.postingId);
-  if (openingsError) return { ok: false, error: openingsError.message };
-
-  let detail;
-  try {
-    detail = await getFormDetail(session.organization.id, input.formId);
-  } catch (err) {
-    return { ok: false, error: googleError(err) };
-  }
-
-  if (!detail.linkedSheetId) {
-    return {
-      ok: false,
-      error:
-        "That form has no linked response sheet yet. In the form: Responses \u2192 Link to Sheets, then try again.",
-    };
-  }
-
-  const report = compareOptions(
-    detail.roleOptions,
-    (openings ?? []).map((o) => o.form_option_value),
-  );
-
-  const { error } = await supabase
-    .from("posting")
-    .update({
-      form_id: input.formId,
-      spreadsheet_id: detail.linkedSheetId,
-      form_connected_at: new Date().toISOString(),
-      // Header row. Imports start from the first response below it.
-      last_imported_row: 1,
-    })
-    .eq("id", input.postingId);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath(`/postings/${input.postingId}`);
-  return { ok: true, data: { ...report, formTitle: detail.title } };
-}
-
-/** Runs an import immediately rather than waiting for the next cron tick. */
-export async function importNow(postingId: string): Promise<ActionResult> {
-  const session = await getSessionContext();
-  if (!session) return { ok: false, error: "Not signed in." };
-
-  await enqueueJob(session.organization.id, "import_submissions", { postingId });
-  after(() => {
-    runQueuedJobs({ kinds: ["import_submissions", "screen_application"] }).catch(
-      () => {},
-    );
-  });
-
-  revalidatePath(`/postings/${postingId}`);
-  return { ok: true, data: undefined };
-}
-
-/** FR-29. Assigning an unmatched submission creates the application and screens it. */
-export async function assignUnmatched(input: {
-  submissionId: string;
-  openingId: string;
-}): Promise<ActionResult> {
-  const session = await getSessionContext();
-  if (!session) return { ok: false, error: "Not signed in." };
-
-  const organizationId = session.organization.id;
-  const supabase = await createClient();
-
-  const { data: submission, error: loadError } = await supabase
-    .from("unmatched_submission")
-    .select("id, posting_id, raw_answers, cv_drive_file_id, source_row_number")
-    .eq("id", input.submissionId)
-    .maybeSingle();
-  if (loadError) return { ok: false, error: loadError.message };
-  if (!submission) return { ok: false, error: "That submission no longer exists." };
-
-  const raw = (submission.raw_answers ?? {}) as Record<string, unknown>;
-  const email = typeof raw._email === "string" ? raw._email : null;
-  const fullName = typeof raw._fullName === "string" ? raw._fullName : null;
-  if (!email) {
-    return { ok: false, error: "This submission has no email address to identify the candidate." };
-  }
-
-  const formAnswers = Object.fromEntries(
-    Object.entries(raw).filter(([key]) => !key.startsWith("_")),
-  );
-
-  const { data: candidate, error: candidateError } = await supabase
-    .from("candidate")
-    .upsert(
-      { organization_id: organizationId, email, full_name: fullName },
-      { onConflict: "organization_id,email" },
-    )
-    .select("id")
-    .single();
-  if (candidateError) return { ok: false, error: candidateError.message };
-
-  const { data: application, error: applicationError } = await supabase
-    .from("application")
-    .insert({
-      organization_id: organizationId,
-      opening_id: input.openingId,
-      candidate_id: candidate.id,
-      source: "form",
-      source_status: "present",
-      source_row_number: submission.source_row_number,
-      form_answers: formAnswers,
-      cv_drive_file_id: submission.cv_drive_file_id,
-      submitted_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-  if (applicationError) {
-    if (applicationError.code === "23505") {
-      return {
-        ok: false,
-        error: "This candidate already has an application on that opening.",
-      };
-    }
-    return { ok: false, error: applicationError.message };
-  }
-
-  const { error: resolveError } = await supabase
-    .from("unmatched_submission")
-    .update({ resolved_application_id: application.id })
-    .eq("id", submission.id);
-  if (resolveError) return { ok: false, error: resolveError.message };
-
-  // The CV has only ever existed in Drive for an unmatched submission, so
-  // it has to be pulled into Storage before screening can read it.
-  if (submission.cv_drive_file_id) {
-    try {
-      await attachCvFromDrive(
-        organizationId,
-        application.id,
-        submission.cv_drive_file_id,
-      );
-    } catch (err) {
-      return { ok: false, error: `Assigned, but the CV couldn't be fetched: ${googleError(err)}` };
-    }
-  }
-
-  await enqueueJob(organizationId, "screen_application", {
-    applicationId: application.id,
-    reason: "new",
-  });
-  pumpJobsAfterResponse();
-
-  revalidatePath(`/postings/${submission.posting_id}`);
-  return { ok: true, data: undefined };
-}
-
 /** Polled by the candidates list while any application is pending/in-progress. */
 export async function refreshApplications(
   openingId: string,
@@ -826,4 +626,27 @@ export async function retryScreening(applicationId: string): Promise<ActionResul
   revalidatePath(`/postings/${opening?.posting_id}/openings/${application.opening_id}`);
 
   return { ok: true, data: undefined };
+}
+
+/**
+ * FR-88. Regenerating invalidates the old link immediately — the point
+ * of the feature is that a leaked or spammed link can be killed.
+ */
+export async function regenerateApplyLink(
+  postingId: string,
+): Promise<ActionResult<{ applyToken: string }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const applyToken = randomBytes(32).toString("base64url");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("posting")
+    .update({ apply_token: applyToken })
+    .eq("id", postingId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/postings/${postingId}`);
+  return { ok: true, data: { applyToken } };
 }
