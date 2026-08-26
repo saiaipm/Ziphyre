@@ -1,7 +1,7 @@
 /**
  * Runtime configuration checks.
  *
- * M0 ships before Supabase and Google credentials exist. Rather than crashing
+ * M0 ships before Supabase credentials exist. Rather than crashing
  * or pretending, the app reports exactly what is missing and keeps every
  * screen reachable. Tech spec §3.1 — nothing silently half-works.
  */
@@ -25,14 +25,6 @@ export function getSetupState(): SetupItem[] {
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       ),
       blocks: "Signing in, and everything that reads or writes data.",
-    },
-    {
-      key: "google",
-      label: "Google OAuth credentials",
-      description:
-        "Read-only access to Forms, Sheets and Drive, plus admin sign-in.",
-      present: Boolean(process.env.GOOGLE_CLIENT_ID),
-      blocks: "Connecting a form and importing applications.",
     },
     {
       key: "seed_admin",

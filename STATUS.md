@@ -1,6 +1,6 @@
 # Ziphyre — Current State
 
-**Updated:** 23 August 2026
+**Updated:** 26 August 2026
 **Purpose:** Session handoff. Where the build actually is, what's next, and
 what's outstanding. Everything durable lives in the documents below — this
 file is deliberately just the moving parts.
@@ -13,8 +13,9 @@ file is deliberately just the moving parts.
 |---|---|
 | `ProductContext.md` | Product truth — personas, pillars, principles, glossary |
 | `TechDecisions.md` | Stack truth and the *why* behind it. Stands in for `CodeContext.md` until there's enough code to write that properly |
-| `ProductNotes/PN-001-…md` | The feature ask |
-| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-86 |
+| `ProductNotes/PN-001-…md` | The original feature ask |
+| `ProductNotes/PN-002-…md` | Why Google intake was replaced by a hosted apply page |
+| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-100 (Draft 6; FR-1–4, 19–29, 36, 62–65 retired) |
 | `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones |
 | `Testing/README.md` | Why the baseline file is gitignored, and what it's for |
 
@@ -55,19 +56,26 @@ Working and verified in the browser, not just typechecked:
 - FR-47 (unreadable CV) verified with a real case: a legacy `.doc` upload
   lands at Needs manual review with its own specific reason, never a score.
 
-**M3 (Google) — done, exit bar met.** Connection, form matching, the
+**M3 (Google) — shipped, then deliberately replaced by M3.5.** Connection, form matching, the
 `import_submissions` job, and the unmatched queue are built and verified
 live: a real Google Form submission (Sai Phani, 23 Aug 2026) reached the
 pipeline unaided — imported, CV pulled from Drive, screened (6.2/10) —
-with zero manual action beyond submitting the form. Remaining M3 corners
-(resubmission dedup, unmatched-role routing, revoke-access handling) are
-exercisable but not yet exercised; lower priority since the core mechanism
-is proven.
+with zero manual action beyond submitting the form. That proved intake
+worked end to end — and then PN-002 removed the whole path, because the
+setup ritual needed a 144-line manual and the sensitive OAuth scopes it
+required sat behind a Google review that blocked every real customer.
+
+**M3.5 (native intake) — done, exit bar met.** The Google path is gone
+entirely, replaced by a Ziphyre-hosted application page (PN-002,
+functional spec Draft 6, tech spec Draft 5). Verified live 26 Aug 2026: a
+candidate applied through `/apply/[token]` with **no Google account on
+either side**, saw confirmation immediately, and was screened 8.8/10
+automatically.
 
 **Next: M4 — Pipeline.** Stages, batch actions, disposition, CV viewer,
 reassignment.
 
-**Design note for M4, flagged 23 Aug 2026:** the opening page currently
+**Design note for M4, still open:** the opening page currently
 stacks setup (title/location, JD, all requirements) and the candidates list
 on one long scroll — a byproduct of M2 bolting a minimal list onto the
 existing setup page rather than building real pipeline UI. Split these:
@@ -99,21 +107,22 @@ baseline's "treat CA as a hard gate" scenario). Compared to
   surface, and it's a real, open limitation, not a bug in the plumbing.
 - **Not exercised in this pass:** the CV-internal experience-discrepancy
   check the baseline flags for one candidate (claimed vs. listed dates) —
-  manual upload has no "declared experience" to diff against, so FR-46 as
-  built only fires once form-submitted applications exist (M3).
+  manual upload has no "declared experience" to diff against. Applications
+  through the apply page do carry it, so FR-46 can now be exercised
+  properly — worth doing during M4.
 
 ---
 
-## Verified state, 23 Aug 2026
+## Verified state, 26 Aug 2026
 
-**Git:** on `main`, in sync with `origin/main`. M1+M2 merged; M3 committed
-directly on top.
+**Git:** on `feature/native-application-form`, branched from `main`.
+M3.5 is committed here and not yet merged.
 
-**Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): 15 tables, RLS on all.
+**Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): 14 tables, RLS on all.
 `organization`, `app_user`, `membership`, `posting`, `opening`, `jd_version`,
 `requirement`, `provider_settings`, `candidate`, `application`, `screening`,
-`stage_event`, `job`, `google_connection`, `unmatched_submission` — plus a
-private `cvs` Storage bucket.
+`stage_event`, `job`, `apply_attempt` — plus a private `cvs` Storage bucket.
+`google_connection` and `unmatched_submission` were dropped by M3.5.
 
 **Providers configured**, in fallback order:
 
@@ -177,7 +186,14 @@ Already fixed — noted because a future middleware→proxy.ts migration (see
 #3 below) must carry this exclusion forward, or cron silently stops working
 in production while looking fine locally.
 
-**10. The Google OAuth app is in Testing mode. Two consequences.**
+**10. ~~The Google OAuth app is in Testing mode~~ — no longer applies.**
+M3.5 removed every sensitive scope. Admin sign-in uses basic identity
+scopes only, which need no Google verification review and have no 7-day
+refresh-token expiry. **This was the single largest go-to-market blocker
+and it is gone.** Original note kept below for the record.
+
+<details><summary>Original, 23 Aug 2026</summary>
+
 Hit on first connect, 23 Aug 2026: `Error 403: access_denied` — *"has not
 completed the Google verification process… can only be accessed by
 developer-approved testers."*
@@ -196,6 +212,7 @@ developer-approved testers."*
 Both go away only by publishing the app, which for these sensitive scopes
 requires Google's verification review. Fine to stay in Testing for the pilot;
 it must be resolved before real customers connect their own accounts.
+</details>
 
 ---
 

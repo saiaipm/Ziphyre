@@ -21,7 +21,7 @@ export default function SignInPage() {
 
           <h1 className="text-2xl font-semibold">Sign in</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            Use the Google account that owns your application forms.
+            Sign in with your Google account.
           </p>
 
           <SignInButton disabled={!ready} />
