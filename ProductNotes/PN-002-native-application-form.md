@@ -65,7 +65,8 @@ Decision 3 below takes that trade deliberately, records what it costs, and leave
 Not simplification in the abstract. Concretely:
 
 - **The entire unmatched-submission concept.** FR-28 and FR-29 exist only because a candidate can type a dropdown value we do not recognise. When openings are rendered from our own database, naming an unknown one is structurally impossible.
-- **FR-63, FR-64, FR-65** — never write to the sheet, reflect edits at source, flag deleted rows. All three exist only because the source of truth lives in someone else's system. FR-36's resubmission path already covers "the candidate sent a new version."
+- **FR-63, FR-64, FR-65** — never write to the sheet, reflect edits at source, flag deleted rows. All three exist only because the source of truth lives in someone else's system.
+- **FR-36** — the resubmission path, retired by Decision 5 in favour of refusing a second application outright.
 - **FR-19 – FR-27** — the template, the copying, the dropdown sync, the form picker.
 - The 60-second poll, `last_imported_row`, `last_sweep_at`, and sheet column-header matching — which has already bitten us once, when a form typo (`Full ame`) would have silently left every candidate unnamed.
 - ~1,000 lines of Google-specific code and the 144-line manual.
@@ -131,7 +132,9 @@ Supabase Auth does ship email OTP (`signInWithOtp`), and it was worth asking abo
 
 **Decision:** ship without it. Add `candidate.email_verified boolean not null default false` in the same migration so turning verification on later is a behaviour change, not a schema migration.
 
-**The consequence, stated plainly:** without verification, a submission can overwrite a real applicant's. If someone submits to the same opening using an address that has already applied, FR-36's resubmission path fires — the existing CV moves to `previous_cv_storage_path`, the new one takes its place, and a rescreen is queued. Nothing is destroyed and the admin can see `resubmitted_at`, so it is recoverable rather than lossy. Accepted for v1; it is the first thing OTP would fix if abuse shows up.
+**The consequence, stated plainly:** Decision 5 (one application per opening) removes the worst version of this — an unverified submission can no longer overwrite a real applicant's CV, because a second attempt is refused rather than merged.
+
+What remains is the mirror of it: someone who knows both the posting link and a person's email address could apply *as* them first, and thereby block the real person from applying. Narrow — it needs the unguessable link, the victim's address, and a specific motive — and it fails loudly rather than silently, since the real candidate is told they have already applied and can contact the employer. Accepted for v1. It is the first thing OTP would fix if it ever shows up.
 
 ### 4. Uploads go direct to storage; the candidate never waits
 
@@ -149,13 +152,31 @@ Doing it in this order also avoids orphaned applications with no CV attached, wh
 
 ---
 
+### 5. One application per opening — refused, not merged
+
+Yes, this is possible, and most of it is already built: `application` has carried `unique (opening_id, candidate_id)` since M2, and candidates are unique on `(organization_id, email)`. The same address therefore resolves to the same candidate row and cannot hold two applications for one opening. The database already refuses it.
+
+What changes is the **behaviour on collision**. Today FR-36 treats a repeat as a resubmission — displace the old CV, keep the new one, queue a rescreen. Now it is simply refused. **FR-36 retires**, and `previous_cv_storage_path` and `resubmitted_at` become dead columns to drop with the rest.
+
+**Once per *opening*, not once per posting.** FR-37 is an existing, deliberate product decision — one person may hold applications against several openings and is recognised as the same candidate. Someone genuinely suited to two different roles in one hiring drive should be able to say so. Tightening this to once-per-posting is a one-line change if you would rather stop role-shotgunning, but it contradicts FR-37 and I would not do it by default.
+
+**What is honestly enforceable.** Without verified email, "once" is enforceable against accident, not against determination — anyone can apply again from a second address. That is worth stating plainly rather than implying the rule is airtight. It stops the duplicate submissions that actually happen (a candidate unsure whether the first one worked), which is the real problem.
+
+**This changes the upload flow.** Decision 4 has the browser upload before it submits, so a duplicate applicant would push a 1 MB file and *then* be told they had already applied — a wasted upload and an orphaned storage object, caused by our own ordering. The fix: **the request for an upload slot must carry the email and the opening**, and the server refuses to issue a signed URL if an application already exists. The duplicate is then stopped before a single byte moves. The submit step re-checks, and the unique constraint remains the backstop against the race between the two.
+
+**What the candidate is told.** "You have already applied for this role" — plainly. This does leak, to anyone holding the link, whether a given address has applied to a given opening. That was weighed against staying quiet and showing a false confirmation: silence would violate Principle 4 (*silence is a bug*) and Principle 10 (*say the honest thing*), and would badly mislead a real person who is simply unsure whether their first attempt landed. A narrow enumeration leak behind an unguessable link is the smaller harm.
+
+**One thing to schedule, not solve now.** Abandoned uploads — a candidate who uploads and never submits — leave unreferenced objects in the bucket. The existing `purge_expired` retention job is the natural place to sweep objects with no owning application after a few hours.
+
+---
+
 ## Next steps
 
 The spec pipeline, in order — **no code until the functional spec revision is agreed.**
 
-**1. Functional Spec revision.** Retire FR-1–FR-4, FR-19–FR-29 and FR-62–FR-65 by marking them retired with a pointer to this note, rather than deleting the numbers — the traceability table in the tech spec maps FR ranges, and renumbering would break the audit trail this project has kept carefully everywhere else. Add the apply-page requirements as **FR-87 onward**. Rewrite §9's *"Public"* row, §4's out-of-scope line *"Anything candidate-facing beyond Google's form receipt"*, and the Later Versions row this note fulfils.
+**1. Functional Spec revision.** Retire FR-1–FR-4, FR-19–FR-29, FR-36 and FR-62–FR-65 by marking them retired with a pointer to this note, rather than deleting the numbers — the traceability table in the tech spec maps FR ranges, and renumbering would break the audit trail this project has kept carefully everywhere else. Add the apply-page requirements as **FR-87 onward**. Rewrite §9's *"Public"* row, §4's out-of-scope line *"Anything candidate-facing beyond Google's form receipt"*, and the Later Versions row this note fulfils.
 
-**2. Tech Spec revision.** The public route and its rate limiting, the two-step signed-upload flow with server-side verification, `posting.apply_token`, `candidate.email_verified`, widening `application.source` to include `apply`, and the removal plan for the Google tables and columns. Also: `opening.form_option_value` is `not null` with a unique constraint and exists *solely* for Google dropdown matching — it becomes dead weight and should be dropped, along with `posting`'s six Google columns and `application.cv_drive_file_id` / `source_row_number`.
+**2. Tech Spec revision.** The public route and its rate limiting, the two-step signed-upload flow with server-side verification, `posting.apply_token`, `candidate.email_verified`, widening `application.source` to include `apply`, and the removal plan for the Google tables and columns. Also: `opening.form_option_value` is `not null` with a unique constraint and exists *solely* for Google dropdown matching — it becomes dead weight and should be dropped, along with `posting`'s six Google columns and `application.cv_drive_file_id`, `source_row_number`, `previous_cv_storage_path` and `resubmitted_at`.
 
 **3. Build, as M3.5 — Native intake.** Superseding M3 rather than rewriting its history: M3's changelog entries and STATUS record stay as written, since they were true when written.
 
