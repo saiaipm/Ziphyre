@@ -55,15 +55,26 @@ Working and verified in the browser, not just typechecked:
 - FR-47 (unreadable CV) verified with a real case: a legacy `.doc` upload
   lands at Needs manual review with its own specific reason, never a score.
 
-**M3 (Google) — code complete, NOT yet verified end to end.** Connection,
-form matching, the `import_submissions` job, and the unmatched queue are
-built, typecheck clean, and merged to `main`. What has *not* happened is the
-milestone's actual exit bar: a real submission reaching the pipeline unaided.
-That is blocked on the Google Form existing (see `docs/google-form-setup.md`)
-and on the OAuth test-user fix in Outstanding #10.
+**M3 (Google) — done, exit bar met.** Connection, form matching, the
+`import_submissions` job, and the unmatched queue are built and verified
+live: a real Google Form submission (Sai Phani, 23 Aug 2026) reached the
+pipeline unaided — imported, CV pulled from Drive, screened (6.2/10) —
+with zero manual action beyond submitting the form. Remaining M3 corners
+(resubmission dedup, unmatched-role routing, revoke-access handling) are
+exercisable but not yet exercised; lower priority since the core mechanism
+is proven.
 
-**Next after that: M4 — Pipeline.** Stages, batch actions, disposition, CV
-viewer, reassignment.
+**Next: M4 — Pipeline.** Stages, batch actions, disposition, CV viewer,
+reassignment.
+
+**Design note for M4, flagged 23 Aug 2026:** the opening page currently
+stacks setup (title/location, JD, all requirements) and the candidates list
+on one long scroll — a byproduct of M2 bolting a minimal list onto the
+existing setup page rather than building real pipeline UI. Split these:
+Setup vs. Pipeline, most likely as tabs on
+`/postings/[postingId]/openings/[openingId]` (which the tech spec's routes
+table already calls "the pipeline" screen). Fold this into M4's plan rather
+than patching it in isolation.
 
 ---
 
