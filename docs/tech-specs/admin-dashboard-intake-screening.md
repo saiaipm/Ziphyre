@@ -1,8 +1,8 @@
 # Tech Spec — Screening Desk
 
-**Implements:** `docs/functional-specs/admin-dashboard-intake-screening.md` (Draft 2)
-**Built on:** `TechDecisions.md` (Draft 2)
-**Status:** Draft 1 · 16 August 2026
+**Implements:** `docs/functional-specs/admin-dashboard-intake-screening.md` (Draft 6)
+**Built on:** `TechDecisions.md` (Draft 7), `ProductNotes/PN-002-native-application-form.md`
+**Status:** Draft 5 · 23 August 2026
 
 Requirement references are **FR-n** from the functional spec. Where this document decides something the functional spec left open, it is marked **[new decision]**.
 
@@ -10,26 +10,26 @@ Requirement references are **FR-n** from the functional spec. Where this documen
 
 ## 1. Shape of the system
 
-Four moving parts. Everything else is UI over them.
+Three moving parts. Everything else is UI over them.
 
 ```
-Google Form ──► Response Sheet ──► import job ──► application row
-                                                       │
-                                                       ▼
-                        manual upload ──────────► screening job ──► screening row
-                                                       │
-                                                       ▼
-                                              pipeline UI ──► exports
+apply page (public) ──┐
+                      ├──► application row ──► screening job ──► screening row
+manual upload ────────┘                                               │
+                                                                      ▼
+                                                          pipeline UI ──► exports
 ```
 
 | Part | Runs where | Trigger |
 |---|---|---|
-| **Import** | Background job | Cron, every 60s per open posting |
+| **Intake** | In-request | A candidate submits, or the admin uploads |
 | **Screening** | Background job | Queued the moment an application row exists |
 | **Pipeline** | Server-rendered shell, client-side data | User |
 | **Retention** | Background job | Cron, daily |
 
-**Nothing long-running happens inside a web request.** Screening takes tens of seconds and must retry; imports touch a third party. Both are jobs.
+**Nothing long-running happens inside a web request.** Screening takes tens of seconds and must retry, so it stays a job. Intake is now in-request precisely because it is cheap: validate, insert, enqueue, return. **The CV file never passes through the application server** — the browser uploads it straight to Storage against a signed URL (§5.2), so the expensive part of a submission is not ours to carry.
+
+*Draft 5 removed a fourth part.* Intake used to be a cron-driven import job polling a Google Sheet. There is no third party in the path any more.
 
 ---
 
@@ -72,29 +72,13 @@ membership
   created_at, updated_at
   unique (organization_id, user_id)
 
-google_connection
-  id                       uuid pk
-  organization_id             uuid not null unique references organization(id)
-  google_email             text not null
-  refresh_token_encrypted  bytea not null
-  scopes                   text[] not null
-  status                   text not null default 'active'
-                             check (status in ('active','needs_reconnect'))
-  connected_by             uuid references app_user(id)
-  created_at, updated_at   timestamptz
-
 posting
   id                 uuid pk
   organization_id       uuid not null references organization(id)
   name               text not null
   status             text not null default 'open'
                        check (status in ('open','closed'))
-  form_id            text                 -- Google Form identifier
-  spreadsheet_id     text                 -- linked response sheet
-  form_connected_at  timestamptz
-  last_imported_row  int not null default 1
-  last_import_at     timestamptz
-  last_sweep_at      timestamptz
+  apply_token        text not null unique  -- unguessable; the public apply link
   closed_at          timestamptz
   purge_after        timestamptz          -- closed_at + 6 months
   purge_warned_at    timestamptz
@@ -106,10 +90,8 @@ opening
   posting_id             uuid not null references posting(id) on delete cascade
   title                  text not null
   work_location          text not null
-  form_option_value      text not null    -- exact dropdown string
   current_jd_version_id  uuid
   created_at, updated_at
-  unique (posting_id, form_option_value)
 
 jd_version                              -- APPEND ONLY
   id            uuid pk
@@ -132,10 +114,11 @@ requirement
   created_at, updated_at
 
 candidate
-  id            uuid pk
-  organization_id  uuid not null
-  email         citext not null
-  full_name     text
+  id              uuid pk
+  organization_id uuid not null
+  email           citext not null
+  email_verified  boolean not null default false  -- always false in v1; see PN-002 §3
+  full_name       text
   created_at, updated_at
   unique (organization_id, email)          -- FR-37
 
@@ -144,20 +127,15 @@ application
   organization_id              uuid not null
   opening_id                uuid not null references opening(id) on delete cascade  -- FR-84
   candidate_id              uuid not null references candidate(id)
-  source                    text not null check (source in ('form','manual'))
+  source                    text not null check (source in ('apply','manual','form'))
+                              -- 'form' is legacy: rows imported by the retired
+                              -- Google Sheet path. Kept so provenance stays honest
   form_answers              jsonb                    -- absent key = never asked
   admin_overrides           jsonb not null default '{}'   -- FR-34, kept separate
   cv_storage_path           text
-  cv_drive_file_id          text
   cv_mime                   text
   cv_original_filename      text
-  previous_cv_storage_path  text                     -- FR-36
-  source_row_number         int
-  source_status             text not null default 'present'
-                              check (source_status in
-                                ('present','deleted_at_source','manual'))
   submitted_at              timestamptz
-  resubmitted_at            timestamptz
   current_stage             text not null default 'new'
                               check (current_stage in
                                 ('new','screened','shortlisted','on_hold','rejected'))
@@ -168,18 +146,8 @@ application
   current_screening_id      uuid
   purged_at                 timestamptz
   created_at, updated_at
-  unique (opening_id, candidate_id)     -- FR-36, the dedup constraint
-
-unmatched_submission                    -- FR-28
-  id                      uuid pk
-  organization_id            uuid not null
-  posting_id              uuid not null references posting(id) on delete cascade  -- FR-84
-  claimed_option          text
-  raw_answers             jsonb not null
-  cv_drive_file_id        text
-  source_row_number       int
-  resolved_application_id uuid references application(id)
-  created_at
+  unique (opening_id, candidate_id)     -- FR-95: one application per opening.
+                                        -- Now a refusal, not a merge
 
 screening                               -- APPEND ONLY
   id                       uuid pk
@@ -260,6 +228,7 @@ screening      (application_id, created_at desc)
 stage_event    (application_id, created_at desc)
 job            (status, run_after) where status = 'queued'
 candidate       unique (organization_id, email)
+posting         unique (apply_token)
 ```
 
 ### 2.4 The Not-provided distinction (FR-33, FR-68)
@@ -271,6 +240,8 @@ Three states must be distinguishable, and `null` alone cannot carry three states
 | Asked and answered | key present, value set | the value |
 | Asked, left blank | key present, value `null` | blank |
 | Never asked (manual upload) | key absent from `form_answers` | **Not provided** |
+
+**Only manual uploads produce Not-provided now.** Every field on the application page is required (**FR-91**), so a candidate who applies themselves always arrives with a complete `form_answers`. The distinction still matters — FR-68's filter-exclusion counting exists for exactly the admin-uploaded candidates who lack these fields — but it is no longer a state a form submission can be in.
 
 `admin_overrides` is a separate object so a hand-filled value (**FR-34**) never overwrites what the candidate actually submitted. Read order: override, then form answer, then Not provided.
 
@@ -305,9 +276,10 @@ create policy tenant_write on <table> for all
 |---|---|
 | `screening`, `stage_event`, `jd_version` | Select only. No update or delete policy exists for anyone — the absence of the policy is the enforcement |
 | `job` | No client access at all. Background-only |
+| `apply_attempt` | No client access at all. Written and read only by the public intake handlers |
 | `provider_settings.api_key_encrypted` | Never selectable from the client. The client reads `provider`, `model`, `key_hint`, `validated_at` through a view |
 
-**Background jobs bypass RLS** and must filter `organization_id` explicitly in every query. This is the single largest tenant-isolation risk in the system.
+**Background jobs bypass RLS** and must filter `organization_id` explicitly in every query. This is the single largest tenant-isolation risk in the system. **The public intake handlers (§5) are the second**, for the same reason: they run with the elevated client and no session, so every one of their queries is scoped by the `apply_token`'s posting and nothing else.
 
 **Rule.** The elevated client is constructed in exactly one module, and that module is never imported by anything that renders. Enforce with a lint rule, not vigilance.
 
@@ -332,62 +304,91 @@ Answers the open question carried from TechDecisions: who creates the organizati
 
 ## 4. Migrations
 
-Timestamp-prefixed, applied in order:
+Timestamp-prefixed, applied in order. **As actually applied**, not as first planned — Draft 1's names were a projection and the real sequence diverged:
 
 ```
-20260816090000_core_tenancy.sql        organization, app_user, membership, RLS helpers
-20260816090100_postings_openings.sql   posting, opening, jd_version, requirement
-20260816090200_candidates_apps.sql     candidate, application, unmatched_submission
-20260816090300_screening.sql           screening, stage_event
-20260816090400_jobs_settings.sql       job, provider_settings
-20260816090500_storage_buckets.sql     cv bucket + policies
+20260821060000_core_tenancy.sql             organization, app_user, membership, RLS helpers
+20260822090000_m1_postings_openings.sql     posting, opening, jd_version, requirement,
+                                            provider_settings
+20260822140000_m1_provider_list_revision.sql  provider CHECK widened to the FR-81 list
+20260822180000_m1_multi_provider_fallback.sql multi-provider chain + priority
+20260822190000_m2_candidates_apps.sql       candidate, application
+20260822200000_m2_screening.sql             screening, stage_event, record_screening()
+20260822210000_m2_jobs.sql                  job, claim_next_job()
+20260822220000_m2_storage.sql               cvs bucket + policies
+20260822230000_m2_citext_schema_fix.sql     citext moved out of public (linter)
+20260823090000_m3_google_connection.sql     google_connection, unmatched_submission
+20260823xxxxxx_native_intake.sql            apply_token, email_verified, apply_attempt,
+                                            source CHECK widened; everything the
+                                            previous migration added, dropped again
 ```
+
+**The last two lines are the honest record of a reversal**, one day apart. Left visible rather than tidied away: the M3 migration was applied, ran in production against a real submission, and is now rolled forward out of existence. Squashing them would hide that this happened.
+
+**The intake migration is non-destructive to candidate data.** The pilot organisation holds a real application that arrived through the retired Google path. It keeps its candidate, its CV, its screening and its `source = 'form'` provenance; only the connection and the dead columns go.
 
 **Rule.** Never modify a migration already applied anywhere, including a preview environment. Roll forward.
 
 ---
 
-## 5. Google integration
+## 5. Application intake (FR-87 – FR-100)
 
-### 5.1 Connection (FR-1 – FR-4)
+Replaces the Google integration entirely. See PN-002 for why.
 
-Google sign-in through Supabase Auth with **read-only** scopes:
+### 5.1 The public surface
 
-```
-drive.readonly          read uploaded CVs
-spreadsheets.readonly   read response rows
-forms.body.readonly     read the form's dropdown options for FR-27
-```
+Exactly one route is reachable without a session: `GET /apply/[token]` and its two `POST` companions. `posting.apply_token` is unguessable (32 bytes, base64url) — not as a security control on its own, but so that open postings cannot be enumerated by anyone who happens to hit `/apply`.
 
-**Rule.** No write scope is ever requested. **FR-63** (never write to the sheet) becomes impossible to violate rather than merely forbidden.
+**Rule.** The browser never touches the database on this path. Both writes go through route handlers that validate everything server-side and use the elevated client. **No RLS policy is ever granted to `anon`** — the public surface stays exactly as wide as these handlers, and the isolation rule from §3 (background code filters `organization_id` explicitly) applies to them for the same reason.
 
-Refresh token encrypted at rest, never returned to the browser. A refresh failure sets `status = 'needs_reconnect'`, which drives the banner in functional spec §8. Existing applications remain fully readable because their CVs are already in our own Storage (TechDecisions §5.3).
+The apply page renders only: the organisation's name, and the title and work location of each opening in that posting **that has a current JD** (FR-89, FR-8). Nothing else about the organisation, the posting, or any candidate is exposed.
 
-### 5.2 Form matching (FR-27, FR-28)
+### 5.2 Submission is two steps, in this order **[new decision]**
 
-On connecting a form, read its dropdown options and compare against `opening.form_option_value` for the posting. Report both directions of mismatch — options with no opening, and openings with no option — as functional spec §8 specifies.
-
-**Matching is on the exact option string.** This is why `form_option_value` is stored separately from `title`: the admin may word the dropdown differently from the role title, and matching on title would silently break.
-
-### 5.3 Import job
+Upload first, submit second. The ordering is deliberate and the reasoning is worth keeping:
 
 ```
-kind: import_submissions
-payload: { posting_id }
-schedule: every 60s per open posting
+1.  POST /api/apply/[token]/upload-slot   { email, openingId, filename, size, mime }
+      → server: posting open? opening has a JD? no existing application
+        for (opening, email)? rate limit OK? size ≤ 1MB? mime allowed?
+      → 200 { signedUrl, storagePath }   |   409 already applied   |   429
+
+2.  browser PUTs the file straight to Supabase Storage against signedUrl
+
+3.  POST /api/apply/[token]/submit        { ...fields, storagePath }
+      → server: re-verify all of the above, then HEAD the object —
+        it must exist, be ≤ 1MB, and carry an allowed content type
+      → insert candidate (or reuse), insert application, enqueue
+        screen_application, return 201
 ```
 
-1. Read rows after `last_imported_row`.
-2. For each row:
-   - Resolve or create `candidate` by verified email.
-   - Match `claimed_option` to an opening. **No match →** `unmatched_submission`, continue (**FR-28**).
-   - **Existing application for (opening, candidate)?** → resubmission path (**FR-36**): move current CV to `previous_cv_storage_path`, store the new one, set `resubmitted_at`, leave stage untouched, queue a rescreen.
-   - Otherwise insert `application`, copy the CV from Drive into Storage, queue `screen_application`.
-3. Advance `last_imported_row`.
+**Why the duplicate check sits in step 1, not step 3.** A candidate who has already applied would otherwise upload a megabyte before being told, leaving an orphaned object behind — a waste caused entirely by our own ordering. Checking before the slot is issued means nothing moves. Step 3 re-checks because the two calls are not atomic, and `unique (opening_id, candidate_id)` is the backstop when they race.
 
-**A row that fails is recorded and skipped.** It never blocks the rows behind it — one malformed submission must not stop intake for a whole posting.
+**Why the server HEADs the object rather than trusting `storagePath`.** The browser is an untrusted client that could claim any path or any size. The only authoritative statement about what was actually uploaded comes from Storage itself. **Nothing is trusted from step 2** — the size and type checks in step 1 are for fast feedback, not enforcement.
 
-**Separate slower sweep** (`last_sweep_at`, every ~15 min) re-reads the full response range to satisfy **FR-64** (edits at source reflected) and **FR-65** (deleted rows flagged, application retained as `deleted_at_source`).
+**Storage path:** `{organization_id}/apply/{token}/{uuid}-{filename}`. On success the application's `cv_storage_path` is rewritten to the standard `{organization_id}/{application_id}/{filename}` shape used everywhere else, so downstream code sees one layout.
+
+### 5.3 Limits and abuse
+
+| Control | Where |
+|---|---|
+| 1 MB, PDF or DOCX only (FR-94) | Client for feedback; **server after upload for enforcement** |
+| One application per opening (FR-95) | Step 1 check, step 3 re-check, unique constraint |
+| Per-IP rate limit on both endpoints | A small `apply_attempt` table, swept by the retention job |
+| Honeypot field and a minimum time-to-fill | Step 3, silently discarded |
+| Posting must be `open` (FR-100) | Both steps |
+
+**No CAPTCHA in this build.** It is the next control if volume becomes real (functional spec §18), ahead of email verification.
+
+Deliberately **not** enforced at the bucket: a bucket-wide `file_size_limit` of 1 MB would also cap the admin's manual uploads, which have no such restriction. The limit belongs to the public path, so it is enforced there.
+
+### 5.4 Orphaned uploads
+
+A candidate who takes a slot and never submits leaves an object with no application. The daily `purge_expired` job also sweeps `{organization_id}/apply/**` objects older than 24 hours with no owning application. Cheap, and it stops the bucket accreting abandoned files.
+
+### 5.5 What screening receives
+
+Nothing changes downstream. A row lands in `application` with `source = 'apply'` and a complete `form_answers` object — every field is required (FR-91), so unlike a manual upload nothing is ever Not-provided. `screen_application` is enqueued exactly as it is today and the candidate waits for none of it (FR-96).
 
 ---
 
@@ -484,11 +485,13 @@ Returns a proposed list; the admin confirms (**FR-14**, **FR-15**). Extraction r
 | Trigger | Vercel Cron → runner route, every minute |
 | Claim | `update ... set status='running', locked_at=now() where id in (select ... for update skip locked)` |
 | Retries | Backoff 1m, 5m, 15m, 1h, 6h; `max_attempts` 5 |
-| Terminal failure | `screen_application` → `needs_manual_review` with reason. `import_submissions` → posting flagged, admin notified |
+| Terminal failure | `screen_application` → `needs_manual_review` with reason |
 | Stuck jobs | `locked_at` older than 10 minutes is reclaimed |
 | Idempotency | Every handler is safe to run twice. Screening inserts a new row rather than updating, so a duplicate run costs money, not correctness |
 
 **Rule.** One job = one unit of work. One application, one posting, one export. Never one opening's worth of anything.
+
+*Draft 5 removed the `import_submissions` kind.* Intake no longer needs a job at all — a submission inserts its own row in-request.
 
 ---
 
@@ -498,17 +501,20 @@ Returns a proposed list; the admin confirms (**FR-14**, **FR-15**). Extraction r
 |---|---|---|
 | `/` | Server, per request | Home overview (**FR-76** – **FR-80**). Counts must be current |
 | `/postings/new` | Server shell + client form | Multi-step creation |
-| `/postings/[postingId]` | Server, per request | Openings, form connection, unmatched queue |
+| `/postings/[postingId]` | Server, per request | Openings, application link |
+| `/apply/[token]` | Server, per request | **Public.** The application page (**FR-87** – **FR-100**) |
+| `/api/apply/[token]/upload-slot` | Route handler | **Public.** Issues a signed upload URL (§5.2) |
+| `/api/apply/[token]/submit` | Route handler | **Public.** Creates the application (§5.2) |
 | `/postings/[postingId]/openings/[openingId]` | Server shell, client data | The pipeline |
 | `/settings/organization` | Server, per request | Org profile: name, legal name, website, industry, size, location, timezone, currency, logo |
-| `/settings/connections` | Server, per request | Google connection |
+
 | `/settings/screening` | Server, per request | Provider and key (**FR-81** – **FR-83**) |
 | `/no-access` | Server | Shown to a signed-in user with no membership (§3.1) |
 | `/auth/callback` | Route handler | OAuth return |
 | `/api/cron/jobs` | Route handler | Runner. Secret-guarded |
 | `/api/cron/retention` | Route handler | Daily. Secret-guarded |
 
-**Rule.** No organization-scoped response is cached at the CDN. Candidate data is private and changes constantly; a cache hit across organizations is the worst possible bug.
+**Rule.** No organization-scoped response is cached at the CDN. Candidate data is private and changes constantly; a cache hit across organizations is the worst possible bug. **`/apply/[token]` is not exempt** — it is public but still organization-scoped, and it must reflect a posting being closed immediately.
 
 **Mutations are server actions**, each of which re-verifies the caller's organization. RLS is the backstop, not the only check.
 
@@ -578,10 +584,11 @@ schedule: daily
 - 30 days before: notify the admin, set `purge_warned_at`.
 - At expiry, for each application: delete the CV from Storage, null the CV paths, clear personal fields on `candidate` and `form_answers`/`admin_overrides`, clear `strengths`/`gaps`/`overall_read` on screenings, set `purged_at`.
 - **Retained:** component ratings, overall score, stage, disposition, dates.
+- Also sweeps abandoned intake uploads (§5.4) and expired `apply_attempt` rate-limit rows. Neither is candidate data worth keeping.
 
 **Rule.** Purge is irreversible and deletes real people's data. It runs only against postings whose `purge_after` has genuinely passed, it is logged, and it is the one job that must be tested before it ever runs in production.
 
-The admin's Drive copies are untouched — we hold no write scope. Any candidate-facing wording must say "deleted from Ziphyre".
+**This got heavier in Draft 5.** Previously every form-submitted CV also existed in the admin's Drive, so purging ours left a copy in their hands. Ziphyre now holds the **only** copy of every CV it has ever received. Deleting it deletes it. That makes this job the single place where Principle 9 — candidate data held in trust — is either honoured or broken, and it is the reason the retention rule is not optional. Candidate-facing wording can now simply say "deleted", with no Drive caveat.
 
 ---
 
@@ -590,9 +597,10 @@ The admin's Drive copies are untouched — we hold no write scope. Any candidate
 | Item | Handling |
 |---|---|
 | Provider API key | Encrypted at rest. Never selected client-side. `key_hint` (last 4) is all the UI sees |
-| Google refresh token | Encrypted at rest. Server-only |
 | CVs | Storage bucket, no public access, time-limited signed URLs generated per view |
+| Signed **upload** URLs | Issued only by §5.2 step 1, scoped to one path, short-lived. Never issued before the posting, opening and duplicate checks pass |
 | Cron routes | Guarded by a shared secret; unauthenticated calls rejected |
+| `apply_token` | Not a secret in the cryptographic sense — it is shared publicly by design. It prevents enumeration, nothing more, and no authorisation decision rests on it alone |
 
 **Rule.** No secret is ever placed in a browser-exposed environment variable. This is the most common way an AI-assisted build leaks a key.
 
@@ -604,17 +612,18 @@ The admin's Drive copies are untouched — we hold no write scope. Any candidate
 
 | Failure | Behaviour | Requirement |
 |---|---|---|
-| Google access revoked | Imports stop, posting banner, existing CVs still readable from our Storage | **FR-4** |
-| Sheet unreachable | Import retries; no data loss; `last_imported_row` unchanged | — |
 | CV unreadable | `needs_manual_review`, stays at New, specific reason, retry available | **FR-47**, **FR-48** |
 | Provider down / no key | Same as above, reason names the provider or settings | **FR-83** |
 | Structured output invalid | Retry; never partially saved | — |
 | Job exceeds time limit | Reclaimed after 10 min, retried | — |
-| Row deleted at source | Application retained, `deleted_at_source` | **FR-65** |
-| Duplicate submission | Updates in place, previous CV retained, rescreen queued | **FR-36** |
-| Unknown dropdown option | `unmatched_submission`, surfaced for assignment | **FR-28**, **FR-29** |
+| Duplicate submission | Refused at step 1 before any upload; the first application is untouched | **FR-95** |
+| Upload taken, never submitted | Orphaned object swept after 24h by `purge_expired` | §5.4 |
+| Submit claims a path that was never uploaded | `HEAD` fails, submission refused, no application created | §5.2 |
+| Submit claims a file over 1 MB or of the wrong type | Server-side check on the real object refuses it, whatever the client said | **FR-94** |
+| Posting closed mid-application | Refused at submit with the closed message; nothing partial is stored | **FR-100** |
+| Storage unreachable | Upload fails in the browser and the candidate is told to retry. Nothing is written, so there is no half-application to reconcile | — |
 
-**Invariant across all of them:** an external failure may delay screening; it may never lose a candidate.
+**Invariant across all of them:** an external failure may delay screening; it may never lose a candidate. **A failed intake is the one case where nothing is kept at all** — but that is safe, because a candidate who could not submit was never in the pipeline to lose. The failure is in front of them, not silent.
 
 ---
 
@@ -624,14 +633,17 @@ The admin's Drive copies are untouched — we hold no write scope. Any candidate
 |---|---|
 | Score computation | `overall` = mean of five components, one decimal — **FR-41** |
 | Must-have evaluation | One verdict per must-have; missing entry fails validation — **FR-43** |
-| Dedup | Second submission updates, never inserts — **FR-36** |
+| Dedup | Second application for one opening is refused, never merged, and the first is untouched — **FR-95** |
+| Intake validation | A submission missing any field, or with a CV over 1 MB or of the wrong type, is refused — **FR-91**, **FR-94** |
+| Upload trust | A submit naming a path that was never uploaded, or an object larger than it claimed, is refused — §5.2 |
+| Public surface | `/apply/[token]` exposes no score, no other candidate, and no other posting; a bad token 404s — **FR-99** |
 | Unreadable detection | Scanned PDF → `needs_manual_review`, not a zero score — **FR-47** |
 | Not-provided filtering | Excluded and counted, never silently dropped — **FR-68** |
 | Stage history | Pointer and latest event always agree; batch writes one event per application — **FR-55**, **FR-59** |
 | Purge | Deletes exactly the expired set, retains anonymised scores |
 | Tenant isolation | A second organization's data is unreachable through every client path |
 
-**Not unit-tested:** provider responses (mocked at the boundary), Google services, component rendering.
+**Not unit-tested:** provider responses (mocked at the boundary), component rendering.
 
 **Screening quality is not a unit test.** It is the seven CA CVs against `Testing/baseline-ranking-CA-role.md`, run as a repeatable exercise on every prompt or model change.
 
@@ -639,19 +651,22 @@ The admin's Drive copies are untouched — we hold no write scope. Any candidate
 
 ## 15. Build order
 
-Sequenced so screening quality is proven before any Google work is built.
+Sequenced so screening quality is proven before anything is built on top of it.
 
 | Milestone | Contains | Done when |
 |---|---|---|
 | **M0 — Foundations** | Schema, RLS, auth, seed-admin bootstrap, organization profile settings, job runner | The seed admin signs in and lands in a new organization; a second Google account is refused with the no-access screen; org details can be edited; a no-op job runs on cron |
 | **M1 — Openings** | Posting, opening, JD versions, requirement extraction and marking | The pilot CA JD produces a requirement list that can be edited and marked |
 | **M2 — Screening** | Manual upload, CV storage, screening pipeline, provider settings | **The seven CA CVs are screened and compared against the baseline.** This is rollout stage 1 |
-| **M3 — Google** | Connection, form matching, import job, unmatched queue | A real submission reaches the pipeline unaided |
+| **M3 — Google** *(shipped, then superseded)* | Connection, form matching, import job, unmatched queue | A real submission reached the pipeline unaided, 23 Aug 2026. Retired the same day by M3.5 |
+| **M3.5 — Native intake** | Public apply page, signed-upload flow, `apply_token`, removal of the Google path | A candidate applies through a Ziphyre link on a phone and is screened, with no Google account on either side |
 | **M4 — Pipeline** | Stages, batch actions, disposition, CV viewer, reassignment | A role can be worked end to end |
 | **M5 — Filters & export** | Filtering, sorting, all three export formats | A shortlist can be filtered and sent |
 | **M6 — Overview & retention** | Home counts, mobile layout, purge job | Rahul's glance works on a phone; purge tested |
 
-**M2 needs no Google integration at all.** Manual upload alone exercises the entire screening path, so the riskiest question in the product — is the ranking trustworthy — is answered before a single line of OAuth is written. If the answer is no, M3 through M6 were never wasted.
+**M2 needed no Google integration at all.** Manual upload alone exercised the entire screening path, so the riskiest question in the product — is the ranking trustworthy — was answered before a single line of OAuth was written.
+
+**M3 shipped and was then deliberately replaced** (PN-002). It is left in the table rather than deleted because it is what proved intake worked end to end, and because the reason it was replaced — a setup ritual needing a manual, behind an OAuth review that blocked every real customer — is only legible next to the thing it replaced. **M3.5 lands before M4**: intake is cheaper to change before the pipeline is built on top of it, and it deletes the unmatched queue M4 would otherwise have had to render.
 
 ---
 
@@ -659,19 +674,24 @@ Sequenced so screening quality is proven before any Google work is built.
 
 | Requirement group | Where implemented |
 |---|---|
-| FR-1 – FR-4 | §5.1 Connection |
+| FR-1 – FR-4 | *Retired.* No Google connection exists |
 | FR-5 – FR-12 | §2 `posting`, `opening`, `jd_version` |
 | FR-13 – FR-18 | §6.6 Extraction, §2 `requirement` |
-| FR-19 – FR-25 | Form template (external artefact) + §5.2 matching |
-| FR-26 – FR-29 | §5.2, §5.3, `unmatched_submission` |
-| FR-30 – FR-37 | §5.3 Import, §2.4 Not-provided, unique constraint |
+| FR-19 – FR-29 | *Retired.* Replaced by FR-87 – FR-100 |
+| FR-30 – FR-35, FR-37 | §5 Intake, §2.4 Not-provided |
+| FR-36 | *Retired.* Superseded by FR-95 |
 | FR-38 – FR-51 | §6 Screening pipeline |
-| FR-52 – FR-65 | §9 Pipeline behaviour |
+| FR-52 – FR-61 | §9 Pipeline behaviour |
+| FR-62 – FR-65 | *Retired.* No Drive, no sheet, no source to diverge from |
 | FR-66 – FR-70 | §9 Filtering |
 | FR-71 – FR-75 | §10 Exports |
 | FR-76 – FR-80 | §8 Routes — `/` |
 | FR-81 – FR-83 | §12 Secrets, `provider_settings` |
-| FR-84 | §2.2, §2.1 cascade chain (`opening → application → screening`/`stage_event`, `posting → unmatched_submission`) |
+| FR-84 | §2.2, §2.1 cascade chain (`opening → application → screening`/`stage_event`) |
+| FR-85 – FR-86 | §6 Screening pipeline, provider fallback chain |
+| **FR-87 – FR-100** | **§5 Application intake** |
+
+Retired ranges are listed rather than removed. The numbers are never reused, so a reference to FR-28 found anywhere — in code, a commit, an old note — resolves to something rather than silently pointing at an unrelated requirement.
 
 ---
 
@@ -679,8 +699,11 @@ Sequenced so screening quality is proven before any Google work is built.
 
 1. **Reassignment collision** — resolved here as a refusal (§9). Confirm that's the behaviour you want, versus merging the two applications.
 2. **Export download lifetime** — a bundled-CV export produces a time-limited link. How long should it live? It contains CVs.
-3. **Purge notification route** — the 30-day warning has to reach the admin, but there is no email capability in this build. In-app only, or does this justify the first transactional email?
+3. **Purge notification route** — the 30-day warning has to reach the admin, but there is no email capability in this build. In-app only, or does this justify the first transactional email? **Draft 5 raises the stakes:** Ziphyre now holds the only copy of every CV, so an unnoticed purge is unrecoverable rather than merely inconvenient.
+4. **Rate limit thresholds** — §5.3 specifies per-IP limiting but not the numbers. Genuinely unknowable before real traffic; start deliberately loose and tighten on evidence, since a limit that blocks real applicants is worse than one that lets junk through to a human queue.
+
 *Resolved 16 Aug 2026: organization profile fields confirmed as specified in §2.1; currency and timezone confirmed as organization-level rather than per opening.*
+*Resolved 23 Aug 2026 (PN-002): intake source, email verification, upload mechanics and duplicate handling.*
 
 ---
 
@@ -688,6 +711,7 @@ Sequenced so screening quality is proven before any Google work is built.
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 5 | 23 Aug 2026 | **Google intake replaced by a Ziphyre-hosted application page (PN-002, functional spec Draft 6).** §5 rewritten end to end: a public `/apply/[token]` surface, a two-step upload-then-submit flow where the CV never passes through the application server, and server-side verification of the uploaded object rather than trust in what the client claims. Schema: `posting.apply_token` and `candidate.email_verified` added; `google_connection`, `unmatched_submission`, `opening.form_option_value`, the six Google columns on `posting`, and `cv_drive_file_id` / `source_row_number` / `previous_cv_storage_path` / `resubmitted_at` on `application` all dropped. The `import_submissions` job kind and the fourth moving part in §1 go with them. Two consequences recorded rather than glossed: the public intake handlers join background jobs as the places where tenant isolation is hand-enforced rather than given by RLS, and retention becomes load-bearing now that Ziphyre holds the only copy of every CV |
 | Draft 4 | 22 Aug 2026 | `provider_settings.provider` constraint changed from `('claude','gemini','openai')` to `('openai','google','nvidia')`, matching the revised FR-81 list. Caught before any key was stored: the live CHECK constraint would have rejected all three new provider ids at save time. Rolled forward in migration `20260822140000` rather than editing the applied one |
 | Draft 3 | 21 Aug 2026 | Posting deletion confirmed as an actual product decision (**FR-84**, functional spec) rather than an unconfirmed assumption. Fixed a real schema gap this surfaced: `application.opening_id`, `screening.application_id`, `stage_event.application_id` and `unmatched_submission.posting_id` had no cascade — deleting a posting as specified would have failed on a foreign-key violation rather than actually deleting anything. All four now cascade |
 | Draft 2 | 16 Aug 2026 | Workspace renamed Organization throughout, with profile fields (legal name, website, industry, size, location, timezone, currency, logo) and its own settings screen. Membership split out of `app_user` so the permission layer lands without touching every table — role and invite columns present, role constrained to `admin` for now. Organization bootstrap decided: a seed-admin email creates the org on first sign-in, everyone else is refused until invited. Closes the M0 open question |
