@@ -7,32 +7,33 @@
  * caller of these helpers renders the digits too; the tone only makes a
  * strong candidate findable in a list of fifty at a glance.
  *
- * **No red.** ProductContext Principle 1 is that screening ranks and
- * never decides, and red reads as a verdict the product refuses to
- * make. A weak score gets the same slate the Rejected stage uses —
- * recessive, not alarming — so the loudest thing on the row is a good
- * candidate rather than a bad one.
+ * The bands are a product decision, set 27 Aug 2026: red at or below 6,
+ * amber above 6 up to 7, green above 7. Note this is a *traffic light*,
+ * so the colour does read as a judgement — which is why the number is
+ * always beside it and why nothing in the product acts on the band.
+ * Screening still ranks and never decides (ProductContext Principle 1):
+ * a red score moves no one to Rejected, and only an admin can.
  */
 
 /** Bands are on the 0–10 scale both overall and per component. */
 export type FitBand = "strong" | "moderate" | "weak";
 
 export function fitBand(score: number): FitBand {
-  if (score >= 7.5) return "strong";
-  if (score >= 5) return "moderate";
+  if (score > 7) return "strong";
+  if (score > 6) return "moderate";
   return "weak";
 }
 
 /** Text-only tone, for the five component columns. */
 export const FIT_TEXT: Record<FitBand, string> = {
   strong: "text-fit-strong",
-  moderate: "text-foreground",
-  weak: "text-fit-rejected",
+  moderate: "text-fit-review",
+  weak: "text-fit-weak",
 };
 
 /** Filled tone, for the one number that carries the most weight. */
 export const FIT_FILL: Record<FitBand, string> = {
   strong: "bg-fit-strong-bg text-fit-strong",
   moderate: "bg-fit-review-bg text-fit-review",
-  weak: "bg-fit-rejected-bg text-fit-rejected",
+  weak: "bg-fit-weak-bg text-fit-weak",
 };

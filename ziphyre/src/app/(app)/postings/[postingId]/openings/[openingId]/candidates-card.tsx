@@ -54,6 +54,7 @@ import {
   StageMoveDialog,
   type PendingMove,
 } from "./stage-controls";
+import { OpeningSummary } from "./opening-summary";
 import {
   addCandidatesToOpening,
   changeApplicationStage,
@@ -265,6 +266,12 @@ export function CandidatesCard({
   }
 
   return (
+    <div className="space-y-6">
+      {/* Counted from `applications` — the same state the table renders
+          — so a shortlist made below updates the tiles above it without
+          a refetch, and the two can never disagree. */}
+      <OpeningSummary applications={applications} />
+
     <section className="rounded-lg border border-border bg-card">
       <div className="border-b border-divider px-6 py-4">
         <h2 className="text-sm font-semibold">Candidates</h2>
@@ -430,6 +437,7 @@ export function CandidatesCard({
         }}
       />
     </section>
+    </div>
   );
 }
 

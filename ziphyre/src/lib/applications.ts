@@ -55,6 +55,14 @@ export type ApplicationListItem = {
   screeningFailureReason: string | null;
   cvOriginalFilename: string | null;
   createdAt: string;
+  /**
+   * When the candidate actually applied (FR-53's "date received"), as
+   * distinct from when the row was written. The apply page sets it at
+   * submission and manual upload sets it at upload, so it is present on
+   * every application — filters use this rather than `createdAt`, which
+   * is a database fact rather than a fact about the candidate.
+   */
+  submittedAt: string | null;
   screening: {
     overall: number;
     jdFit: number;
@@ -89,7 +97,7 @@ export async function getApplicationsForOpening(
     .from("application")
     .select(
       `id, current_stage, screening_status, screening_failure_reason,
-       cv_original_filename, created_at,
+       cv_original_filename, created_at, submitted_at,
        candidate:candidate_id (full_name),
        screening:current_screening_id (
          overall, jd_fit, experience, skills, qualification, location,
@@ -136,6 +144,7 @@ export async function getApplicationsForOpening(
       screeningFailureReason: row.screening_failure_reason,
       cvOriginalFilename: row.cv_original_filename,
       createdAt: row.created_at,
+      submittedAt: row.submitted_at ?? null,
       screening: s
         ? {
             overall: s.overall,

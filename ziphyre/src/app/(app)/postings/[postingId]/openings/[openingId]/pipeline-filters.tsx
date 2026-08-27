@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -58,9 +59,21 @@ export type Filters = {
   /** FR-66. Meaningless before M4 — nothing could leave `screened`. */
   stage: StageKey | "any" | "open";
   status: "any" | "complete" | "review";
-  since: "any" | "7" | "30";
+  /** FR-66's "date received", over `submittedAt`. */
+  since: "any" | "7" | "30" | "custom";
+  /** Inclusive `YYYY-MM-DD` bounds, used only when `since` is custom. */
+  from: string;
+  to: string;
   sort: SortKey;
 };
+
+/** Local calendar date as `YYYY-MM-DD` — never `toISOString()`, which
+ *  converts to UTC and lands on yesterday for anyone east of Greenwich,
+ *  India included. */
+export function isoDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export const DEFAULT_FILTERS: Filters = {
   minOverall: "any",
@@ -70,6 +83,13 @@ export const DEFAULT_FILTERS: Filters = {
   stage: "any",
   status: "any",
   since: "any",
+  // Empty here, and filled with today the moment "Exact dates" is
+  // chosen. Calling `new Date()` at module scope would evaluate once on
+  // the server and again in the browser, and those two can land on
+  // different days across a timezone or midnight boundary — the kind of
+  // hydration mismatch this codebase has already been bitten by once.
+  from: "",
+  to: "",
   sort: "score-desc",
 };
 
@@ -120,12 +140,29 @@ export function applyFilters(
     );
   }
 
-  if (f.since !== "any") {
+  // FR-66's "date received" reads `submittedAt` — when the candidate
+  // applied — falling back to `createdAt` only if it is somehow absent.
+  if (f.since === "custom") {
+    if (f.from) {
+      const start = new Date(`${f.from}T00:00:00`).getTime();
+      out = out.filter((a) => receivedAt(a) >= start);
+    }
+    if (f.to) {
+      // End of the chosen day, not its midnight — otherwise picking the
+      // same date for both ends matches nothing, which reads as a bug.
+      const end = new Date(`${f.to}T23:59:59.999`).getTime();
+      out = out.filter((a) => receivedAt(a) <= end);
+    }
+  } else if (f.since !== "any") {
     const cutoff = Date.now() - Number(f.since) * 86_400_000;
-    out = out.filter((a) => new Date(a.createdAt).getTime() >= cutoff);
+    out = out.filter((a) => receivedAt(a) >= cutoff);
   }
 
   return sortItems(out, f.sort);
+}
+
+function receivedAt(a: ApplicationListItem): number {
+  return new Date(a.submittedAt ?? a.createdAt).getTime();
 }
 
 function sortItems(items: ApplicationListItem[], sort: SortKey) {
@@ -135,10 +172,12 @@ function sortItems(items: ApplicationListItem[], sort: SortKey) {
       return copy.sort(
         (a, b) => (a.screening?.overall ?? 99) - (b.screening?.overall ?? 99),
       );
+    // Sorted on the same field the date filter reads, so "Newest first"
+    // and "Last 7 days" can never disagree about what newest means.
     case "date-desc":
-      return copy.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return copy.sort((a, b) => receivedAt(b) - receivedAt(a));
     case "date-asc":
-      return copy.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return copy.sort((a, b) => receivedAt(a) - receivedAt(b));
     case "name":
       return copy.sort((a, b) =>
         (a.candidateName ?? "").localeCompare(b.candidateName ?? ""),
@@ -180,8 +219,21 @@ function activeChips(f: Filters): { key: keyof Filters; label: string }[] {
       key: "status",
       label: f.status === "review" ? "Needs manual review" : "Screened",
     });
-  if (f.since !== "any")
+  if (f.since === "custom") {
+    chips.push({
+      key: "since",
+      label:
+        f.from && f.to
+          ? f.from === f.to
+            ? `Received ${f.from}`
+            : `Received ${f.from} → ${f.to}`
+          : f.from
+            ? `Received from ${f.from}`
+            : `Received up to ${f.to}`,
+    });
+  } else if (f.since !== "any") {
     chips.push({ key: "since", label: `Last ${f.since} days` });
+  }
   return chips;
 }
 
@@ -274,15 +326,64 @@ export function PipelineFilters({
 
         <Picker
           value={filters.since}
-          onValueChange={(v) => set("since", v as Filters["since"])}
+          onValueChange={(v) => {
+            const since = v as Filters["since"];
+            if (since !== "custom") {
+              onChange({ ...filters, since });
+              return;
+            }
+            // Initialised to today on the way in, so the range opens on
+            // "applications received today" rather than on two blank
+            // boxes the admin has to fill before anything happens.
+            const today = isoDate(new Date());
+            onChange({
+              ...filters,
+              since,
+              from: filters.from || today,
+              to: filters.to || today,
+            });
+          }}
           placeholder="Any time"
           width="w-[9.5rem]"
           options={[
             { value: "any", label: "Any time" },
             { value: "7", label: "Last 7 days" },
             { value: "30", label: "Last 30 days" },
+            { value: "custom", label: "Exact dates" },
           ]}
         />
+
+        {/* FR-66's date received, as an explicit range rather than only
+            the relative buckets. Both bounds are optional: setting one
+            leaves the other end open, which is what "everything since
+            the ad went live" actually means. */}
+        {filters.since === "custom" && (
+          <div className="flex items-center gap-1.5">
+            <label className="sr-only" htmlFor="received-from">
+              Received from
+            </label>
+            <Input
+              id="received-from"
+              type="date"
+              value={filters.from}
+              max={filters.to || undefined}
+              onChange={(e) => set("from", e.target.value)}
+              className="h-8 w-[9.5rem] text-xs"
+            />
+            <span className="text-xs text-muted-foreground">to</span>
+            <label className="sr-only" htmlFor="received-to">
+              Received to
+            </label>
+            <Input
+              id="received-to"
+              type="date"
+              value={filters.to}
+              min={filters.from || undefined}
+              onChange={(e) => set("to", e.target.value)}
+              className="h-8 w-[9.5rem] text-xs"
+            />
+          </div>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Sort</span>

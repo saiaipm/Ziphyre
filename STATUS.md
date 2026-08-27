@@ -132,6 +132,31 @@ the real CA pipeline, not just typechecked:
 hides Rejected and On hold in one choice. It was pointless before — every
 application read `Screened`, so it was a control with one setting.
 
+**Pipeline presentation, 27 Aug (second pass).** The candidate list is a
+real table with a header row instead of a list that repeated "JD / Exp /
+Skills" on every row, and it carries two more things:
+
+- **A CV file column beside the candidate's name.** These read as
+  duplicates for manual uploads, because manual upload seeds the candidate
+  name from the filename. They diverge for anyone who applied through the
+  apply page — the demo's one form application is named "Sai Phani" and
+  attached `another candidate's CV file`, which is the case
+  the column exists to make visible.
+- **Date received filter with exact dates** (FR-66), over
+  `application.submitted_at` rather than `created_at`. **No backfill was
+  needed** — `submitted_at` was already populated on every application,
+  manual uploads included, so nothing had to be given a fictional date.
+  Sorting by date moved onto the same field, so "Newest first" and "Last
+  7 days" cannot disagree about what newest means.
+
+**An opening-level summary** now sits above the pipeline, mirroring the
+home screen: Applications · Shortlisted · Still in play · Needs review,
+plus the five-stage funnel. It is **computed from the same array the table
+renders**, not fetched separately — so it updates the instant a stage
+changes, with no refetch, and the funnel cannot drift out of step with the
+list beneath it. FR-102 and FR-103 hold here as they do on home: the five
+stages sum to the total, and Needs review sits outside them.
+
 **Next: M5 — export (FR-71 – FR-75) and retention (§11).** With M4 done, a
 role can now be worked end to end inside Ziphyre; what it cannot yet do is
 leave. Export is the smaller job. **Retention is the one that matters**:
@@ -256,6 +281,22 @@ server-side. The whole list is already loaded and §15 puts the ceiling at
 "several hundred applications per opening", so an array filter is instant
 where a round trip per dropdown change would not be. Reasoning is in
 `pipeline-filters.tsx`. Revisit if that ceiling assumption stops holding.
+
+**Score colours are a traffic light, red included — and that reverses an
+earlier call.** Bands are red at or below 6, amber above 6 to 7, green
+above 7; Rejected is red, Screened blue. The first cut deliberately used
+*no* red, reasoning that red reads as a verdict and ProductContext
+Principle 1 says screening ranks but never decides. The user was told that
+and chose the traffic light anyway on 27 Aug 2026, which is their call to
+make. **Don't quietly revert it to the no-red palette on principle** — the
+principle is still honoured where it counts: the number is always beside
+the colour, and no automatic behaviour anywhere keys off the band. A red
+score still moves nobody; only an admin does.
+
+The tokens are `--fit-weak` (red) and `--fit-screened` (blue), added
+rather than repointed. `--fit-rejected` stays slate because it means a
+*closed posting* elsewhere — an administrative state, not a judgement
+about a person.
 
 **JD upload stores text, not the file.** Everything downstream — extraction,
 screening, versioning — works on text, and a stored binary would be a second

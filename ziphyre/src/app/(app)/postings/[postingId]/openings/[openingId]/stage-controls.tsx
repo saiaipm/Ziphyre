@@ -43,18 +43,22 @@ import { loadReassignTargets, loadStageHistory, reassignApplication } from "../.
  * the word is the information and the colour only reinforces it.
  *
  * Drawn from the same `fit-*` palette as the scores, so one row reads as
- * one scale rather than two colour systems arguing. Rejected takes the
- * recessive slate rather than a strikethrough: the word already says it,
- * and striking a person's name through reads as a judgement the product
- * does not make.
+ * one scale rather than two colour systems arguing: blue for screened
+ * and processed, indigo once shortlisted, amber while held, red once
+ * rejected. No strikethrough on Rejected — the word already says it,
+ * and striking a person's name through is louder than the decision.
+ *
+ * `fit-rejected` (slate) is deliberately not used here. It means a
+ * *closed posting* elsewhere in the product, which is an administrative
+ * state rather than a judgement about a person.
  */
 export function StageBadge({ stage }: { stage: StageKey }) {
   const tone: Record<StageKey, string> = {
     new: "bg-muted text-muted-foreground",
-    screened: "bg-muted text-foreground",
+    screened: "bg-fit-screened-bg text-fit-screened",
     shortlisted: "bg-fit-shortlisted-bg text-fit-shortlisted",
     on_hold: "bg-fit-review-bg text-fit-review",
-    rejected: "bg-fit-rejected-bg text-fit-rejected",
+    rejected: "bg-fit-weak-bg text-fit-weak",
   };
   return (
     <span
