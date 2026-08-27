@@ -7,6 +7,8 @@ import {
   Plus,
   X,
   Pencil,
+  Upload,
+  Download,
   Loader2,
   AlertTriangle,
   Info,
@@ -27,6 +29,7 @@ import type { ApplicationListItem } from "@/lib/applications";
 import {
   updateOpeningDetails,
   updateOpeningJd,
+  uploadOpeningJd,
   extractRequirementsForOpening,
   saveRequirements,
 } from "../../../actions";
@@ -198,6 +201,37 @@ function JdCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(jdContent ?? "");
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function onUpload(file: File) {
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    const result = await uploadOpeningJd(openingId, formData);
+    setUploading(false);
+    if (result.ok) {
+      toast.success("Job description uploaded", {
+        description: `Read ${result.data.characters.toLocaleString()} characters. Saved as a new version.`,
+      });
+    } else {
+      toast.error("Couldn't read that file", { description: result.error });
+    }
+  }
+
+  /** Exports what is actually stored — the extracted text, not the
+      original file, which is the version screening was run against. */
+  function onExport() {
+    const blob = new Blob([jdContent ?? ""], {
+      type: "text/markdown;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `job-description-v${jdVersion ?? 1}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function onSave() {
     setSaving(true);
@@ -225,13 +259,48 @@ function JdCard({
             </p>
           )}
         </div>
-        {jdContent && !editing && (
-          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-            <Pencil className="size-3.5" aria-hidden />
-            Edit
-          </Button>
+        {!editing && (
+          <div className="flex items-center gap-1">
+            {jdContent && (
+              <Button variant="ghost" size="sm" onClick={onExport}>
+                <Download className="size-3.5" aria-hidden />
+                Download
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+            >
+              <Upload className="size-3.5" aria-hidden />
+              {uploading ? "Reading…" : "Upload"}
+            </Button>
+            {jdContent && (
+              <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                <Pencil className="size-3.5" aria-hidden />
+                Edit
+              </Button>
+            )}
+          </div>
         )}
       </div>
+
+      {/* FR-7 has always allowed a document; only the paste half was
+          built. The file is parsed to text and stored as an ordinary
+          new version — we keep the words, not the file, because
+          everything downstream already works on text. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf,.docx,.md,.markdown,.txt"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void onUpload(file);
+        }}
+      />
       <div className="px-6 py-5">
         {editing ? (
           <div className="space-y-3">
@@ -263,7 +332,16 @@ function JdCard({
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            No job description yet.
+            No job description yet. Upload a PDF, Word, Markdown or text file,
+            or{" "}
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={() => setEditing(true)}
+            >
+              paste it as text
+            </button>
+            .
           </p>
         )}
       </div>

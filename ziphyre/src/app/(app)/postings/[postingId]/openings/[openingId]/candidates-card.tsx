@@ -2,7 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Upload, X, RotateCcw, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Upload,
+  X,
+  RotateCcw,
+  AlertTriangle,
+  FileText,
+  ExternalLink,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +25,7 @@ import { modelLabel } from "@/lib/ai/providers";
 import type { ApplicationListItem } from "@/lib/applications";
 import {
   addCandidatesToOpening,
+  getCvViewUrl,
   refreshApplications,
   retryScreening,
 } from "../../../actions";
@@ -258,7 +267,7 @@ function ApplicationRow({
       </li>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>{name}</DialogTitle>
             <DialogDescription>
@@ -270,7 +279,12 @@ function ApplicationRow({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 text-sm">
+          {/* FR-61: the CV readable beside the assessment, without
+              navigating away. Two panes on desktop, stacked on mobile. */}
+          <div className="grid gap-5 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <CvPane applicationId={app.id} open={open} />
+
+          <div className="space-y-4 overflow-y-auto pr-1 text-sm">
             <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
               <Score label="JD Fit" value={s.jdFit} />
               <Score label="Experience" value={s.experience} />
@@ -320,9 +334,91 @@ function ApplicationRow({
               Scored by {modelLabel(s.provider, s.model)}.
             </p>
           </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * FR-61. Fetches a short-lived signed URL on open — never on render of
+ * the list, so a signed URL only exists for a CV someone is actually
+ * looking at. PDFs render inline; anything else (a .docx) cannot be
+ * displayed by the browser, so it offers the file instead of pretending.
+ */
+function CvPane({ applicationId, open }: { applicationId: string; open: boolean }) {
+  // Loading is *derived* from having no result yet, rather than set at
+  // the top of the effect. Each row owns its own dialog, so applicationId
+  // never changes under this component and a null result can only mean
+  // "not fetched yet".
+  const [state, setState] = useState<
+    | { status: "error"; message: string }
+    | { status: "ready"; url: string; mime: string; filename: string }
+    | null
+  >(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getCvViewUrl(applicationId).then((result) => {
+      if (cancelled) return;
+      setState(
+        result.ok
+          ? { status: "ready", ...result.data }
+          : { status: "error", message: result.error },
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, open]);
+
+  const frame =
+    "flex h-[60vh] items-center justify-center rounded-lg border border-border bg-muted/30 text-sm text-muted-foreground";
+
+  if (state === null || state.status !== "ready") {
+    return (
+      <div className={frame}>
+        {state?.status === "error" ? (
+          <span className="px-6 text-center">{state.message}</span>
+        ) : (
+          <Loader2 className="size-5 animate-spin" aria-hidden />
+        )}
+      </div>
+    );
+  }
+
+  const isPdf = state.mime === "application/pdf";
+
+  return (
+    <div className="space-y-2">
+      {isPdf ? (
+        <iframe
+          src={state.url}
+          title="Candidate CV"
+          className="h-[60vh] w-full rounded-lg border border-border bg-white"
+        />
+      ) : (
+        <div className={frame}>
+          <div className="px-6 text-center">
+            <FileText className="mx-auto size-6" aria-hidden />
+            <p className="mt-2">
+              This format can&rsquo;t be shown in the browser.
+            </p>
+          </div>
+        </div>
+      )}
+      <a
+        href={state.url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        <ExternalLink className="size-3" aria-hidden />
+        {isPdf ? "Open in a new tab" : `Download ${state.filename}`}
+      </a>
+    </div>
   );
 }
 
