@@ -13,7 +13,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import { fitBand, FIT_FILL, FIT_TEXT } from "@/lib/fit-tone";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +63,23 @@ import {
 } from "../../../actions";
 
 const POLL_MS = 4000;
+
+/**
+ * Abbreviated in the header because five full words would set the
+ * column widths for a single digit each. The full name is the `title`,
+ * and the assessment dialog spells all five out in full.
+ */
+const COMPONENT_COLUMNS = [
+  { key: "jdFit", label: "JD", full: "JD Fit" },
+  { key: "experience", label: "Exp", full: "Experience" },
+  { key: "skills", label: "Skills", full: "Skills" },
+  { key: "qualification", label: "Qual", full: "Qualification" },
+  { key: "location", label: "Loc", full: "Location" },
+] as const;
+
+/** Columns between the CV file and the stage, for colSpan on the rows
+ *  that have no scores to put there yet. */
+const SCORE_COLSPAN = COMPONENT_COLUMNS.length + 2;
 
 type PendingFile = { key: string; file: File; name: string };
 
@@ -324,42 +350,64 @@ export function CandidatesCard({
               </p>
             ) : (
               <>
-                <div className="flex items-center gap-3 border-b border-divider pb-2">
-                  <SelectCheckbox
-                    checked={allVisibleSelected}
-                    onCheckedChange={toggleAllVisible}
-                    label={
-                      allVisibleSelected
-                        ? "Clear selection"
-                        : `Select all ${visible.length} shown`
-                    }
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {selectedVisible.length > 0
-                      ? `${selectedVisible.length} selected`
-                      : `Select all ${visible.length} shown`}
-                  </span>
-                </div>
-
-                <ul className="divide-y divide-divider">
-                  {visible.map((app) => (
-                    <ApplicationRow
-                      key={app.id}
-                      app={app}
-                      postingId={postingId}
-                      openingId={openingId}
-                      onRetry={onRetry}
-                      selected={selected.has(app.id)}
-                      onSelectedChange={(on) => toggleSelected(app.id, on)}
-                      onMove={(stage) => requestMove([app.id], stage)}
-                      onReassigned={async () => {
-                        const refreshed = await refreshApplications(openingId);
-                        if (refreshed.ok) setApplications(refreshed.data);
-                      }}
-                      busy={moving}
-                    />
-                  ))}
-                </ul>
+                {/* The five component ratings used to repeat their own
+                    label on every row — "JD 9 Exp 8 Skills 6" fifty times
+                    over. A header row says each name once and lets the
+                    digits line up in columns, which is what makes a
+                    column of scores comparable at a glance. */}
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-8">
+                        <SelectCheckbox
+                          checked={allVisibleSelected}
+                          onCheckedChange={toggleAllVisible}
+                          label={
+                            allVisibleSelected
+                              ? "Clear selection"
+                              : `Select all ${visible.length} shown`
+                          }
+                        />
+                      </TableHead>
+                      <TableHead>Candidate</TableHead>
+                      <TableHead>CV file</TableHead>
+                      {COMPONENT_COLUMNS.map((c) => (
+                        <TableHead
+                          key={c.key}
+                          className="text-center text-xs font-medium text-muted-foreground"
+                          title={c.full}
+                        >
+                          {c.label}
+                        </TableHead>
+                      ))}
+                      <TableHead className="text-center">Overall</TableHead>
+                      <TableHead className="text-center">Must-haves</TableHead>
+                      <TableHead>Stage</TableHead>
+                      <TableHead className="w-8">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {visible.map((app) => (
+                      <ApplicationRow
+                        key={app.id}
+                        app={app}
+                        postingId={postingId}
+                        openingId={openingId}
+                        onRetry={onRetry}
+                        selected={selected.has(app.id)}
+                        onSelectedChange={(on) => toggleSelected(app.id, on)}
+                        onMove={(stage) => requestMove([app.id], stage)}
+                        onReassigned={async () => {
+                          const refreshed = await refreshApplications(openingId);
+                          if (refreshed.ok) setApplications(refreshed.data);
+                        }}
+                        busy={moving}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
 
                 <BatchBar
                   count={selectedVisible.length}
@@ -419,46 +467,70 @@ function ApplicationRow({
   // asks the admin to do.
   if (app.screeningStatus === "needs_manual_review") {
     return (
-      <li className="flex items-start gap-3 py-3">
-        <SelectCheckbox
-          checked={selected}
-          onCheckedChange={onSelectedChange}
-          label={`Select ${name}`}
-        />
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fit-review" aria-hidden />
-        <div className="flex-1">
-          <p className="text-sm font-medium">{name}</p>
-          <p className="text-xs text-muted-foreground">
+      <TableRow>
+        <TableCell>
+          <SelectCheckbox
+            checked={selected}
+            onCheckedChange={onSelectedChange}
+            label={`Select ${name}`}
+          />
+        </TableCell>
+        <TableCell className="font-medium">{name}</TableCell>
+        <CvFileCell filename={app.cvOriginalFilename} />
+        <TableCell colSpan={SCORE_COLSPAN}>
+          <span className="flex items-center gap-1.5 text-xs text-fit-review">
+            <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
             Needs manual review — {app.screeningFailureReason}
-          </p>
-        </div>
-        <StageBadge stage={app.currentStage} />
-        <RowStageMenu
-          currentStage={app.currentStage}
-          onMove={onMove}
-          disabled={busy}
-        />
-        <Button size="sm" variant="outline" onClick={() => onRetry(app.id)}>
-          <RotateCcw className="size-3.5" aria-hidden />
-          Retry
-        </Button>
-      </li>
+          </span>
+        </TableCell>
+        <TableCell>
+          <StageBadge stage={app.currentStage} />
+        </TableCell>
+        <TableCell className="text-right">
+          <div className="flex items-center justify-end gap-1">
+            <RowStageMenu
+              currentStage={app.currentStage}
+              onMove={onMove}
+              disabled={busy}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              onClick={() => onRetry(app.id)}
+            >
+              <RotateCcw className="size-3.5" aria-hidden />
+              Retry
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
     );
   }
 
   if (app.screeningStatus !== "complete" || !app.screening) {
     return (
-      <li className="flex items-center gap-3 py-3">
-        <SelectCheckbox
-          checked={selected}
-          onCheckedChange={onSelectedChange}
-          label={`Select ${name}`}
-        />
-        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
-        <p className="flex-1 text-sm font-medium">{name}</p>
-        <span className="text-xs text-muted-foreground">Screening…</span>
-        <StageBadge stage={app.currentStage} />
-      </li>
+      <TableRow>
+        <TableCell>
+          <SelectCheckbox
+            checked={selected}
+            onCheckedChange={onSelectedChange}
+            label={`Select ${name}`}
+          />
+        </TableCell>
+        <TableCell className="font-medium">{name}</TableCell>
+        <CvFileCell filename={app.cvOriginalFilename} />
+        <TableCell colSpan={SCORE_COLSPAN}>
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+            Screening…
+          </span>
+        </TableCell>
+        <TableCell>
+          <StageBadge stage={app.currentStage} />
+        </TableCell>
+        <TableCell />
+      </TableRow>
     );
   }
 
@@ -468,43 +540,86 @@ function ApplicationRow({
 
   return (
     <>
-      <li className="flex items-center gap-3 py-3 hover:bg-muted/50">
-        <SelectCheckbox
-          checked={selected}
-          onCheckedChange={onSelectedChange}
-          label={`Select ${name}`}
-        />
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex flex-1 items-center gap-3 text-left"
-        >
-          <div className="flex-1">
-            <p className="text-sm font-medium">{name}</p>
-            <p className="text-xs text-muted-foreground">
-              {mustHaveCount === 0
-                ? "No must-haves set"
-                : `${mustHaveMet}/${mustHaveCount} must-haves met`}
-            </p>
-          </div>
-          <div className="hidden gap-3 text-xs text-muted-foreground sm:flex">
-            <Score label="JD" value={s.jdFit} />
-            <Score label="Exp" value={s.experience} />
-            <Score label="Skills" value={s.skills} />
-            <Score label="Qual" value={s.qualification} />
-            <Score label="Loc" value={s.location} />
-          </div>
-          <Badge variant={s.meetsAllMustHaves ? "default" : "outline"}>
-            {s.overall.toFixed(1)} / 10
-          </Badge>
-        </button>
-        <StageBadge stage={app.currentStage} />
-        <RowStageMenu
-          currentStage={app.currentStage}
-          onMove={onMove}
-          disabled={busy}
-        />
-      </li>
+      <TableRow>
+        <TableCell>
+          <SelectCheckbox
+            checked={selected}
+            onCheckedChange={onSelectedChange}
+            label={`Select ${name}`}
+          />
+        </TableCell>
+
+        {/* The name is the button, not the row: a whole clickable row
+            is unreachable by keyboard, and §Accessibility requires the
+            pipeline to be fully keyboard-operable. */}
+        <TableCell>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="block max-w-[12rem] truncate text-left text-sm font-medium hover:underline underline-offset-2"
+            title={`${name} — open assessment`}
+          >
+            {name}
+          </button>
+        </TableCell>
+
+        <CvFileCell filename={app.cvOriginalFilename} />
+
+        {COMPONENT_COLUMNS.map((c) => {
+          const value = s[c.key];
+          return (
+            <TableCell
+              key={c.key}
+              className={cn(
+                "text-center text-xs tabular-nums",
+                FIT_TEXT[fitBand(value)],
+              )}
+            >
+              {value}
+            </TableCell>
+          );
+        })}
+
+        <TableCell className="text-center">
+          <span
+            className={cn(
+              "inline-block rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
+              FIT_FILL[fitBand(s.overall)],
+            )}
+          >
+            {s.overall.toFixed(1)}
+          </span>
+        </TableCell>
+
+        {/* Numbers, not a tick: §Accessibility forbids conveying
+            must-have status by colour alone, and "1/2" also says how
+            far off the candidate is, which a tick cannot. */}
+        <TableCell className="text-center text-xs tabular-nums">
+          {mustHaveCount === 0 ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <span
+              className={
+                s.meetsAllMustHaves ? "text-fit-strong" : "text-fit-review"
+              }
+            >
+              {mustHaveMet}/{mustHaveCount}
+            </span>
+          )}
+        </TableCell>
+
+        <TableCell>
+          <StageBadge stage={app.currentStage} />
+        </TableCell>
+
+        <TableCell className="text-right">
+          <RowStageMenu
+            currentStage={app.currentStage}
+            onMove={onMove}
+            disabled={busy}
+          />
+        </TableCell>
+      </TableRow>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
@@ -703,7 +818,37 @@ function CvPane({ applicationId, open }: { applicationId: string; open: boolean 
 function Score({ label, value }: { label: string; value: number }) {
   return (
     <span>
-      {label} <span className="font-medium text-foreground">{value}</span>
+      {label}{" "}
+      <span className={cn("font-medium", FIT_TEXT[fitBand(value)])}>
+        {value}
+      </span>
     </span>
+  );
+}
+
+/**
+ * The uploaded file's own name, alongside the candidate's.
+ *
+ * These are often the same string: a manual upload defaults the
+ * candidate's name to the filename, so a CV added as
+ * `A Candidate.pdf` produces a candidate called "a CA-qualified candidate"
+ * until someone edits it. They diverge for anyone who applied through
+ * the apply page, where the candidate typed their own name and the file
+ * is whatever they happened to attach — and that divergence is exactly
+ * what makes the column worth showing: it is how you notice a CV that
+ * does not belong to the person who sent it.
+ */
+function CvFileCell({ filename }: { filename: string | null }) {
+  if (!filename) {
+    return (
+      <TableCell className="text-xs text-muted-foreground">
+        <span className="italic">No file</span>
+      </TableCell>
+    );
+  }
+  return (
+    <TableCell className="max-w-[9rem] truncate text-xs text-muted-foreground">
+      <span title={filename}>{filename}</span>
+    </TableCell>
   );
 }

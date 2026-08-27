@@ -41,6 +41,12 @@ import { loadReassignTargets, loadStageHistory, reassignApplication } from "../.
 /**
  * FR-53 shows stage on every row. Never colour alone (§Accessibility) —
  * the word is the information and the colour only reinforces it.
+ *
+ * Drawn from the same `fit-*` palette as the scores, so one row reads as
+ * one scale rather than two colour systems arguing. Rejected takes the
+ * recessive slate rather than a strikethrough: the word already says it,
+ * and striking a person's name through reads as a judgement the product
+ * does not make.
  */
 export function StageBadge({ stage }: { stage: StageKey }) {
   const tone: Record<StageKey, string> = {
@@ -48,7 +54,7 @@ export function StageBadge({ stage }: { stage: StageKey }) {
     screened: "bg-muted text-foreground",
     shortlisted: "bg-fit-shortlisted-bg text-fit-shortlisted",
     on_hold: "bg-fit-review-bg text-fit-review",
-    rejected: "bg-muted text-muted-foreground line-through decoration-1",
+    rejected: "bg-fit-rejected-bg text-fit-rejected",
   };
   return (
     <span
