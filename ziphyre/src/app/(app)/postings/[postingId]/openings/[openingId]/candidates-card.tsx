@@ -22,6 +22,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { modelLabel } from "@/lib/ai/providers";
+import {
+  applyFilters,
+  DEFAULT_FILTERS,
+  PipelineFilters,
+  type Filters,
+} from "./pipeline-filters";
 import type { ApplicationListItem } from "@/lib/applications";
 import {
   addCandidatesToOpening,
@@ -44,7 +50,12 @@ export function CandidatesCard({
   const [applications, setApplications] = useState(initialApplications);
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sorting lives inside applyFilters, so the server's default ordering
+  // and the user's chosen one can't disagree.
+  const visible = applyFilters(applications, filters);
 
   const hasInFlight = applications.some(
     (a) => a.screeningStatus === "pending" || a.screeningStatus === "in_progress",
@@ -184,11 +195,36 @@ export function CandidatesCard({
             No candidates yet. Applications appear here once you add CVs.
           </p>
         ) : (
-          <ul className="divide-y divide-divider">
-            {applications.map((app) => (
-              <ApplicationRow key={app.id} app={app} onRetry={onRetry} />
-            ))}
-          </ul>
+          <>
+            <PipelineFilters
+              filters={filters}
+              onChange={setFilters}
+              shown={visible.length}
+              total={applications.length}
+            />
+
+            {visible.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No candidates match these filters.{" "}
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:text-foreground"
+                  onClick={() =>
+                    setFilters({ ...DEFAULT_FILTERS, sort: filters.sort })
+                  }
+                >
+                  Clear them
+                </button>{" "}
+                to see all {applications.length}.
+              </p>
+            ) : (
+              <ul className="divide-y divide-divider">
+                {visible.map((app) => (
+                  <ApplicationRow key={app.id} app={app} onRetry={onRetry} />
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </section>
