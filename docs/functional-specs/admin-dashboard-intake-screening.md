@@ -3,7 +3,7 @@
 **Source:** `ProductNotes/PN-001-admin-dashboard-and-screening.md`, revised by `ProductNotes/PN-002-native-application-form.md`
 **Product truth:** `ProductContext.md` v1.1
 **Baseline for validation:** `Testing/baseline-ranking-CA-role.md`
-**Status:** Draft 6 · 23 August 2026
+**Status:** Draft 7 · 27 August 2026
 
 ---
 
@@ -224,6 +224,12 @@ Validated against the seven real Chartered Accountant applicants and the human r
 **FR-78** Selecting an opening opens its pipeline.
 **FR-79** The home screen is readable and usable on a phone.
 **FR-80** Closed postings are visually distinct from open ones and can be hidden.
+
+**FR-101** The home screen opens with an organisation-wide summary: active postings, active openings, and total applications received.
+**FR-102** The summary shows the full stage funnel — New, Screened, Shortlisted, On Hold, Rejected — and those five always sum exactly to the total applications shown.
+**FR-103** Applications needing manual review are shown **separately from the funnel, never as a sixth stage.** Needing review is a screening status, not a stage: such an application is already counted at whatever stage it sits in. Adding it to the funnel would double-count it and stop the totals reconciling — which is the failure that makes a dashboard untrustworthy the first time someone checks the arithmetic.
+**FR-104** The summary counts **active postings only**, by default. Closed postings and their applications are excluded, with a way to include them (**FR-80**). A total that only ever grows stops carrying information.
+**FR-105** No trend, rate, average or time-based measure appears anywhere on the home screen. Counts describe what is true now; §4 puts time-to-hire and funnel analytics out of scope for v1, and this is exactly the screen where they would otherwise creep in.
 
 ### The application page
 
@@ -728,6 +734,12 @@ Posting · Opening · Application · Candidate · Stage · Screening score · Sc
 - [ ] A posting exposes an application link that can be copied, and regenerating it stops the old one working — **FR-87, FR-88**
 - [ ] Deleting a posting with applications requires confirmation naming the candidate count; deleting an empty one does not claim candidates are affected — **FR-84**
 
+### Home overview
+
+- [ ] The five funnel counts sum exactly to the total applications shown — **FR-102**
+- [ ] An application needing manual review appears in the review callout *and* in its own stage, counted once in the funnel — **FR-103**
+- [ ] Closing a posting removes its applications from the summary totals — **FR-104**
+
 ### Intake
 
 - [ ] An application submitted through the link appears in the pipeline without any manual action — **FR-30**
@@ -818,6 +830,7 @@ No dark launch and no admin-only preview: there is no existing product to hide t
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 7 | 27 Aug 2026 | **FR-101 – FR-105 added**: the home screen gains an organisation-wide summary above the per-opening list — active postings, active openings, total applications, and the full five-stage funnel. Two rules exist to keep the numbers honest rather than merely present. **FR-102** requires the funnel to sum to the total, and **FR-103** keeps "needs manual review" out of the funnel because it is a screening status, not a stage — an application carrying it is already counted at its own stage, so listing it as a sixth step would double-count and break the arithmetic. **FR-104** scopes the summary to active postings, since a total that only ever grows stops carrying information. **FR-105** restates §4's exclusion of trend and time-based measures at the one screen most likely to attract them |
 | Draft 6 | 23 Aug 2026 | **Google intake removed; Ziphyre hosts the application page itself (PN-002).** Retires FR-1–FR-4, FR-19–FR-29, FR-36 and FR-62–FR-65 — the connection step, the form template, dropdown matching, the Unmatched concept, the resubmission merge, and everything describing a Sheet we no longer read. Numbers are retired in place rather than reused, so the tech spec's traceability table stays honest. Adds **FR-87 – FR-100**: a per-posting application link, every field and the CV required, PDF/DOCX at 1 MB, one application per opening refused rather than merged, and immediate confirmation with screening running afterwards. Three consequences recorded rather than glossed: email is no longer verified, so identity is trusted rather than proven; the product gains its first public surface; and DOC uploads are now refused outright rather than accepted and failed, since screening cannot read them. Flow A loses its entire setup phase and Flow B drops from eleven steps to eight — the point of the change |
 | Draft 5 | 22 Aug 2026 | **FR-85 and FR-86 added**: multiple providers configurable at once in an explicit fallback order, tried until one succeeds; a fallback is never silent. FR-82 widened to cover adding, removing and reordering. Settings copy extended for the fallback-order list, primary badge, fallback notice and provenance line. Gemini models updated to the current 3.5–3.7 line after Google retired 2.5 for generation |
 | Draft 4 | 22 Aug 2026 | **FR-81 rewritten.** Provider list is now OpenAI, Google Gemini and NVIDIA NIM — Claude dropped, OpenRouter rejected on reliability. One model per provider, cheap/fast tier by deliberate choice, shown by official name rather than API slug. Settings copy updated with model notes, key hints and the connected state |

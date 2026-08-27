@@ -19,6 +19,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { modelLabel } from "@/lib/ai/providers";
 import type { ApplicationListItem } from "@/lib/applications";
@@ -56,16 +58,50 @@ export function OpeningWorkspace({
   initialRequirements,
   initialApplications,
 }: Props) {
+  // Setup and the pipeline are different jobs done at different times:
+  // the JD and its requirements are settled once, then Meera returns
+  // daily to work the pile. Stacking them on one scroll made the daily
+  // task sit below the one-off one.
+  //
+  // Pipeline leads as soon as anyone has applied — FR-78 says choosing
+  // an opening from home opens its *pipeline*, and an opening with no
+  // applications has nothing to open, so Setup is the honest landing
+  // place only while it is still empty.
+  const hasApplications = initialApplications.length > 0;
+
   return (
     <div className="space-y-6">
       <DetailsCard openingId={openingId} title={title} workLocation={workLocation} />
-      <JdCard openingId={openingId} jdContent={jdContent} jdVersion={jdVersion} />
-      <RequirementsCard
-        openingId={openingId}
-        hasJd={Boolean(jdContent)}
-        initialRequirements={initialRequirements}
-      />
-      <CandidatesCard openingId={openingId} initialApplications={initialApplications} />
+
+      <Tabs defaultValue={hasApplications ? "pipeline" : "setup"}>
+        <TabsList>
+          <TabsTrigger value="pipeline">
+            Pipeline
+            {hasApplications && (
+              <Badge variant="secondary" className="ml-1.5">
+                {initialApplications.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="setup">Setup</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pipeline" className="space-y-6">
+          <CandidatesCard
+            openingId={openingId}
+            initialApplications={initialApplications}
+          />
+        </TabsContent>
+
+        <TabsContent value="setup" className="space-y-6">
+          <JdCard openingId={openingId} jdContent={jdContent} jdVersion={jdVersion} />
+          <RequirementsCard
+            openingId={openingId}
+            hasJd={Boolean(jdContent)}
+            initialRequirements={initialRequirements}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

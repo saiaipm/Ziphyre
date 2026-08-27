@@ -17,9 +17,13 @@ import { cn } from "@/lib/utils";
 import { seedPostings, type SeedPosting, type SeedOpening } from "@/lib/seed";
 import type { PostingSummary } from "@/lib/postings";
 
-type Props = { postings: PostingSummary[] };
+type Props = {
+  postings: PostingSummary[];
+  /** The FR-101 summary, rendered on the server and passed through. */
+  summary: React.ReactNode;
+};
 
-export function OverviewClient({ postings }: Props) {
+export function OverviewClient({ postings, summary }: Props) {
   const [preview, setPreview] = useState(false);
 
   const data = preview ? seedPostings : postings;
@@ -65,6 +69,11 @@ export function OverviewClient({ postings }: Props) {
           not screening output. Nothing here is stored.
         </p>
       )}
+
+      {/* The summary counts real applications. Showing it above sample
+          postings would put true numbers next to invented ones and
+          invite the reader to reconcile two things that never matched. */}
+      {!preview && summary}
 
       {data.length === 0 ? (
         <EmptyState />
