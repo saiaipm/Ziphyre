@@ -9,6 +9,8 @@ import {
   StageFunnel,
   SummaryTile,
 } from "@/components/pipeline/stage-funnel";
+import { STAGE_TEXT } from "@/lib/stages";
+import { cn } from "@/lib/utils";
 import { PostingActions } from "./posting-actions";
 import { PostingTitle } from "./posting-title";
 import { ApplyLink } from "./apply-link";
@@ -68,7 +70,7 @@ export default async function PostingDetailPage({
             <SummaryTile
               label="Shortlisted"
               value={metrics.byStage.shortlisted}
-              accent="text-fit-shortlisted"
+              accent={STAGE_TEXT.shortlisted}
             />
             <SummaryTile
               label="Still in play"
@@ -128,7 +130,7 @@ export default async function PostingDetailPage({
                       {c.shortlisted > 0 && (
                         <>
                           {" · "}
-                          <span className="font-medium text-fit-shortlisted">
+                          <span className={cn("font-medium", STAGE_TEXT.shortlisted)}>
                             {c.shortlisted} shortlisted
                           </span>
                         </>

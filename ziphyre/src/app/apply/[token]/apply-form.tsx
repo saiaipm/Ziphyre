@@ -40,7 +40,7 @@ export function ApplyForm({
     return (
       <div className="rounded-lg border border-border bg-card px-5 py-8 text-center">
         <CheckCircle2
-          className="mx-auto size-8 text-fit-shortlisted"
+          className="mx-auto size-8 text-fit-strong"
           aria-hidden
         />
         <h2 className="mt-3 text-lg font-semibold">Application received</h2>

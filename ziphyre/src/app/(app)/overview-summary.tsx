@@ -4,6 +4,7 @@ import {
   SummaryTile,
 } from "@/components/pipeline/stage-funnel";
 import type { OverviewMetrics } from "@/lib/overview";
+import { STAGE_TEXT } from "@/lib/stages";
 
 /**
  * FR-101 – FR-105. Counts only: no trend, no rate, no average. §4 puts
@@ -25,7 +26,7 @@ export function OverviewSummary({ metrics }: { metrics: OverviewMetrics }) {
         <SummaryTile
           label="Shortlisted"
           value={byStage.shortlisted}
-          accent="text-fit-shortlisted"
+          accent={STAGE_TEXT.shortlisted}
         />
       </div>
 

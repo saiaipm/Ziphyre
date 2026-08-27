@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { STAGE_TEXT } from "@/lib/stages";
 import { seedPostings, type SeedPosting, type SeedOpening } from "@/lib/seed";
 import type { PostingSummary } from "@/lib/postings";
 
@@ -315,8 +316,11 @@ function Stat({
       <p
         className={cn(
           "tabular mt-0.5 text-[15px] font-semibold",
+          // Reads the shared stage colour rather than naming one, so
+          // this stat and the Shortlisted badge in a pipeline stay the
+          // same colour when that colour changes.
           tone === "shortlisted" && value > 0
-            ? "text-fit-shortlisted"
+            ? STAGE_TEXT.shortlisted
             : value === 0
               ? "text-muted-foreground"
               : "text-foreground",

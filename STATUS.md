@@ -299,10 +299,21 @@ principle is still honoured where it counts: the number is always beside
 the colour, and no automatic behaviour anywhere keys off the band. A red
 score still moves nobody; only an admin does.
 
+The five stages run along that same scale: grey New, blue Screened,
+**green Shortlisted**, amber On hold, red Rejected. Shortlisted shares
+green with a strong score on purpose — they say the same thing about a
+candidate, one as the model's reading and one as Meera's decision. It was
+indigo until 27 Aug, which sat too close to Screened's blue to tell apart
+down a column.
+
 The tokens are `--fit-weak` (red) and `--fit-screened` (blue), added
 rather than repointed. `--fit-rejected` stays slate because it means a
 *closed posting* elsewhere — an administrative state, not a judgement
-about a person.
+about a person. `--fit-shortlisted` was **renamed `--fit-accent`** when
+Shortlisted went green: it is now purely a UI accent (the Primary-provider
+badge, the Must-have marker chip) and says nothing about a candidate. The
+rename was the point — a token named after a stage it no longer colours is
+how the next person reintroduces indigo by accident.
 
 **Colour now has exactly two sources**, after a first pass left four
 places disagreeing: `lib/fit-tone.ts` owns score bands and the pass/fail

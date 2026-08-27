@@ -8,6 +8,7 @@ import {
   type StageCounts,
 } from "@/components/pipeline/stage-funnel";
 import type { ApplicationListItem } from "@/lib/applications";
+import { STAGE_TEXT } from "@/lib/stages";
 
 /**
  * The per-opening mirror of the home and posting summaries, using the
@@ -40,7 +41,7 @@ export function OpeningSummary({
         <SummaryTile
           label="Shortlisted"
           value={byStage.shortlisted}
-          accent="text-fit-shortlisted"
+          accent={STAGE_TEXT.shortlisted}
         />
         {/* What Meera works from once a pile has been through once:
             everyone not yet held or rejected. */}

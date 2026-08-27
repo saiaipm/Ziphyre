@@ -152,8 +152,8 @@
   --fit-strong-bg: #052e1f;
   --fit-review: #fbbf24;
   --fit-review-bg: #2c1c05;
-  --fit-shortlisted: #a5b4fc;
-  --fit-shortlisted-bg: #1e1b4b;
+  --fit-accent: #a5b4fc;
+  --fit-accent-bg: #1e1b4b;
   --fit-rejected: #94a3b8;
   --fit-rejected-bg: #1e293b;
   --fit-weak: #f87171;
@@ -225,8 +225,8 @@
   --fit-strong-bg: #ecfdf5;
   --fit-review: #d97706;
   --fit-review-bg: #fffbeb;
-  --fit-shortlisted: #4f46e5;
-  --fit-shortlisted-bg: #eef2ff;
+  --fit-accent: #4f46e5;
+  --fit-accent-bg: #eef2ff;
   --fit-rejected: #64748b;
   --fit-rejected-bg: #f1f5f9;
   --fit-weak: #dc2626;
@@ -244,8 +244,8 @@
   --color-fit-strong-bg: var(--fit-strong-bg);
   --color-fit-review: var(--fit-review);
   --color-fit-review-bg: var(--fit-review-bg);
-  --color-fit-shortlisted: var(--fit-shortlisted);
-  --color-fit-shortlisted-bg: var(--fit-shortlisted-bg);
+  --color-fit-accent: var(--fit-accent);
+  --color-fit-accent-bg: var(--fit-accent-bg);
   --color-fit-rejected: var(--fit-rejected);
   --color-fit-rejected-bg: var(--fit-rejected-bg);
   --color-fit-weak: var(--fit-weak);
