@@ -252,11 +252,14 @@ which model judged a candidate. **Fix by recording the fact at write time**
 (a `was_fallback` column set by the screening job, which already knows)
 rather than deriving it at read time. Found 27 Aug while verifying M4.
 
-**2. The rest of FR-66, and FR-68.** Filters over *form answers* — location,
-notice period, CTC, relocation, declared experience. These need the answers
-plumbed into `getApplicationsForOpening`, and they carry FR-68's obligation
-to count and reveal candidates excluded for having "Not provided" in a
-filtered field. The score/date/status filters that exist do not touch this.
+**2. CTC and notice period are free text, so they can only be searched,
+not ranged.** The apply form takes them as strings — "8 LPA",
+"₹12,00,000", "2 months", "Immediate" — so the filter matches text. What
+a recruiter actually wants is "expected CTC under 12 LPA", and that needs
+those fields to become structured numbers **on the apply form**. Parsing
+the existing strings instead would mean guessing at a dozen notations, and
+a wrong guess silently drops a candidate — the exact failure FR-68 exists
+to prevent. This is a form change, not a filter change.
 
 **3. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
 middleware convention and warns on every boot:

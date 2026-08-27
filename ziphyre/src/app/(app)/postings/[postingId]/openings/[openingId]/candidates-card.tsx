@@ -31,12 +31,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { modelLabel } from "@/lib/ai/providers";
+import { PipelineFilters } from "./pipeline-filters";
 import {
   applyFilters,
   DEFAULT_FILTERS,
-  PipelineFilters,
   type Filters,
-} from "./pipeline-filters";
+} from "@/lib/pipeline-filtering";
 import type { ApplicationListItem } from "@/lib/applications";
 import {
   STAGE_LABELS,
@@ -104,7 +104,10 @@ export function CandidatesCard({
 
   // Sorting lives inside applyFilters, so the server's default ordering
   // and the user's chosen one can't disagree.
-  const visible = applyFilters(applications, filters);
+  const { visible, hiddenForMissing, missingFieldLabels } = applyFilters(
+    applications,
+    filters,
+  );
 
   // A selection only ever means what is currently on screen. Filtering
   // to "score ≥ 8", selecting all, then clearing the filter must not
@@ -339,6 +342,8 @@ export function CandidatesCard({
               onChange={setFilters}
               shown={visible.length}
               total={applications.length}
+              hiddenForMissing={hiddenForMissing}
+              missingFieldLabels={missingFieldLabels}
             />
 
             {visible.length === 0 ? (
