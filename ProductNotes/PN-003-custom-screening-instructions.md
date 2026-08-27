@@ -1,6 +1,7 @@
 # Product Note 003 — Custom Screening Instructions
 
-**Status:** Proposed, 27 August 2026
+**Status:** Layer 0 shipped 28 August 2026. Layers 1 and 2 deferred —
+see Decision B.
 **Author:** Working note from the M7 planning session
 **Related:** ProductContext Principles 1, 6, 8, 10 · Non-Goal 2 ·
 FR-38 – FR-50 · TechDecisions §7 · `PN-001 §1`
@@ -198,9 +199,12 @@ openings inherit and may override?
 per role, but re-typing a glossary for every opening fails Principle 5.
 
 **B. How far does freedom go?** Layer 0 only, Layers 0–1, or all three?
-*Recommendation:* 0 and 1 first, ship 2 once there is evidence the
-structured controls are genuinely insufficient. Layer 0 alone may satisfy
-most of the felt need, and it is reversible.
+**Decided 28 August 2026: Layer 0 only.** The product owner's reading was
+that editable instructions introduce complexity they do not want to carry,
+but that the prompt should at least be visible. That is the whole of the
+felt need met, at none of the cost — and it leaves A, C and D unanswered
+because nothing yet depends on them. Revisit only if a real customer asks
+for judgement they cannot get by changing requirements.
 
 **C. The discrimination guardrail.** Warning text at the point of
 editing, an explicit blocklist of protected characteristics, or trust the
@@ -220,10 +224,14 @@ silently.
 
 ## Next steps
 
-1. Product owner answers A–D.
-2. Functional spec gains FR numbers for the chosen layers; tech spec gains
-the `screening_prompt` table and the composition rules.
-3. Build behind the existing rescreen machinery.
+**Layer 0 is built** — Settings → Screening, "How candidates are judged":
+the prompt verbatim, its version, what else is sent per candidate, and two
+lines saying plainly that it is fixed and why. It also names the control
+the admin *does* have, because "no control over screening" turned out to
+mean the requirements-and-must-haves control was invisible rather than
+absent.
 
-**Nothing here is built.** Layer 0 is a few hours and could ship on its
-own if the immediate need is simply *"I want to see the prompt."*
+**Layers 1 and 2 are not built and are not scheduled.** If they are ever
+picked up, decisions A, C and D above are the ones to answer first, and C
+— the discrimination guardrail — should be settled before a single
+character of free text is accepted from a customer.

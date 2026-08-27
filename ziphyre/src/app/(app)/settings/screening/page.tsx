@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ScreeningForm } from "./screening-form";
+import { ScreeningInstructions } from "./screening-instructions";
 import { getSessionContext } from "@/lib/session";
 import { getConfiguredProviders } from "@/lib/provider-settings";
 
@@ -23,6 +24,7 @@ export default async function ScreeningSettingsPage() {
         </p>
       </div>
       <ScreeningForm configured={configured} />
+      <ScreeningInstructions />
     </div>
   );
 }

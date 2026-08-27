@@ -48,7 +48,16 @@ const ScreeningSchema = z.object({
 
 export type ScreeningResult = z.infer<typeof ScreeningSchema>;
 
-const SYSTEM_PROMPT = `You screen candidate CVs against a job description for a hiring product. You never decide who gets hired — you produce a structured assessment a human reviews.
+/**
+ * Exported so Settings → Screening can show it. Read-only there, and
+ * fixed here on purpose: ProductContext Principle 8 is that every
+ * candidate meets the same yardstick, and the "never recommend an
+ * outcome" line below is what keeps Non-Goal 2 — not an automatic
+ * decision-maker — structural rather than a promise. PN-003 works
+ * through what editable instructions would cost and what a safe
+ * version would look like.
+ */
+export const SYSTEM_PROMPT = `You screen candidate CVs against a job description for a hiring product. You never decide who gets hired — you produce a structured assessment a human reviews.
 
 Rules:
 - Judge each must-have requirement explicitly against its stated text. Return exactly one entry per must-have id given to you — never omit one, never invent one that wasn't given.
