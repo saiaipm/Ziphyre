@@ -79,6 +79,7 @@ export default async function PostingDetailPage({
                 metrics.byStage.rejected -
                 metrics.byStage.on_hold
               }
+              outOf={metrics.totalApplications}
             />
           </div>
 

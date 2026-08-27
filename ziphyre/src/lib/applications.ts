@@ -27,6 +27,36 @@ const FIELD_LABELS: Record<FormFieldKey, string> = {
   expectedCtc: "Expected CTC",
 };
 
+export const FIELD_LABEL = FIELD_LABELS;
+
+/**
+ * The resolved value of every FR-21 field, `null` meaning **Not
+ * provided** — which is a real answer, not a missing one. FR-68 turns
+ * on being able to tell those apart, so this deliberately returns null
+ * rather than the string "Not provided": a filter has to exclude and
+ * count them, and it cannot do that if absence has been flattened into
+ * text.
+ *
+ * Same precedence as `describeFormAnswers` (tech spec §2.4): override,
+ * then the candidate's answer, then nothing.
+ */
+export type ResolvedAnswers = Record<FormFieldKey, string | null>;
+
+export function resolveFormAnswers(
+  formAnswers: Record<string, unknown>,
+  adminOverrides: Record<string, unknown>,
+): ResolvedAnswers {
+  const out = {} as ResolvedAnswers;
+  for (const key of FORM_FIELD_KEYS) {
+    const value = adminOverrides[key] ?? formAnswers[key];
+    out[key] =
+      value === undefined || value === null || value === ""
+        ? null
+        : String(value);
+  }
+  return out;
+}
+
 /**
  * Tech spec §2.4: override, then form answer, then "Not provided" — a
  * hand-filled value never overwrites what the candidate submitted, and
@@ -63,6 +93,11 @@ export type ApplicationListItem = {
    * is a database fact rather than a fact about the candidate.
    */
   submittedAt: string | null;
+  /** FR-53's "key form fields", and what FR-66's field filters read. */
+  answers: ResolvedAnswers;
+  /** FR-71: the export needs the candidate's real email, not the
+   *  placeholder a manual upload was given. Null when it is one. */
+  candidateEmail: string | null;
   screening: {
     overall: number;
     jdFit: number;
@@ -98,7 +133,8 @@ export async function getApplicationsForOpening(
     .select(
       `id, current_stage, screening_status, screening_failure_reason,
        cv_original_filename, created_at, submitted_at,
-       candidate:candidate_id (full_name),
+       form_answers, admin_overrides,
+       candidate:candidate_id (full_name, email),
        screening:current_screening_id (
          overall, jd_fit, experience, skills, qualification, location,
          meets_all_must_haves, must_have_result, strengths, gaps,
@@ -117,6 +153,7 @@ export async function getApplicationsForOpening(
   const items: ApplicationListItem[] = data.map((row) => {
     const candidate = row.candidate as unknown as {
       full_name: string | null;
+      email: string | null;
     } | null;
     const s = row.screening as unknown as {
       overall: number;
@@ -145,6 +182,17 @@ export async function getApplicationsForOpening(
       cvOriginalFilename: row.cv_original_filename,
       createdAt: row.created_at,
       submittedAt: row.submitted_at ?? null,
+      answers: resolveFormAnswers(
+        (row.form_answers as Record<string, unknown>) ?? {},
+        (row.admin_overrides as Record<string, unknown>) ?? {},
+      ),
+      // Manual upload mints `manual+<uuid>@ziphyre.internal` because
+      // `candidate.email` is not-null unique. That is plumbing, not a
+      // way to reach anyone, so it never leaves the server as an email.
+      candidateEmail:
+        candidate?.email && !candidate.email.endsWith("@ziphyre.internal")
+          ? candidate.email
+          : null,
       screening: s
         ? {
             overall: s.overall,

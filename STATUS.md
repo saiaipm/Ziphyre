@@ -163,12 +163,45 @@ not fetched separately — so it updates the instant a stage changes, with
 no refetch. FR-102 and FR-103 hold at every level: the five stages sum to
 the total, and Needs review sits outside them.
 
-**Next: M5 — export (FR-71 – FR-75) and retention (§11).** With M4 done, a
-role can now be worked end to end inside Ziphyre; what it cannot yet do is
-leave. Export is the smaller job. **Retention is the one that matters**:
-Ziphyre now holds the only copy of every CV it has received, and tech spec
-§11 says the purge job must be tested before it ever runs in production.
-Nothing else in the build deletes real people's data.
+**M5 (filters & export) — built, on `m5-filters-export`.**
+
+*Filters.* FR-66's form-answer half: location, notice period, CTC (all
+text search), willingness to relocate, and a real numeric minimum on
+experience. **FR-68** reports how many candidates were dropped purely for
+never having answered a filtered field, names the field, and offers to
+show them — the count stays visible while they are shown. FR-70 gains
+sorting by any component rating.
+
+The rules live in `lib/pipeline-filtering.ts` — pure, no React. **21
+checks over the demo's real shape pass**, including the component sorts,
+which the Radix listbox would not let me drive from a browser.
+
+*Export (FR-71 – FR-75).* All three formats through
+`POST /api/openings/[openingId]/export`:
+
+- **CSV** — UTF-8 with BOM so Excel on Windows renders "₹" correctly.
+- **Excel** — a real workbook via `exceljs`: numbers as numbers, frozen
+  header, autofilter.
+- **PDF** — `@react-pdf/renderer`, each candidate with scores, must-haves
+  and the assessment summary, **in the order shown on screen** (FR-72),
+  with the marker fixed on every page.
+- **CV bundle** (FR-73) — a zip of the report plus each CV named after
+  the candidate rather than its storage uuid.
+
+**The client sends ids and an order, never rows.** Everything is re-read
+server-side through the user's own client, so RLS decides what is
+exportable and a tampered request cannot widen the scope.
+
+Verified live: all three formats return real files with correct
+content-types, the FR-75 marker carries the exporter's name and
+timestamp, and the zip contained the report, a marker text file and both
+CVs.
+
+**Next: M6 — overview & retention.** Home counts and mobile layout are
+largely done; **the purge job is the real work, and the riskiest thing
+left in the product.** Ziphyre holds the only copy of every CV it has
+received, and tech spec §11 says purge must be tested before it ever runs
+in production.
 
 ---
 
@@ -252,31 +285,57 @@ which model judged a candidate. **Fix by recording the fact at write time**
 (a `was_fallback` column set by the screening job, which already knows)
 rather than deriving it at read time. Found 27 Aug while verifying M4.
 
-**2. The rest of FR-66, and FR-68.** Filters over *form answers* — location,
-notice period, CTC, relocation, declared experience. These need the answers
-plumbed into `getApplicationsForOpening`, and they carry FR-68's obligation
-to count and reveal candidates excluded for having "Not provided" in a
-filtered field. The score/date/status filters that exist do not touch this.
+**2. CTC and notice period are free text, so they can only be searched,
+not ranged.** The apply form takes them as strings — "8 LPA",
+"₹12,00,000", "2 months", "Immediate" — so the filter matches text. What
+a recruiter actually wants is "expected CTC under 12 LPA", and that needs
+those fields to become structured numbers **on the apply form**. Parsing
+the existing strings instead would mean guessing at a dozen notations, and
+a wrong guess silently drops a candidate — the exact failure FR-68 exists
+to prevent. This is a form change, not a filter change.
 
-**3. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
+**3. CV bundles are capped at 40 and built in-request.** Tech spec §10
+puts them behind a `build_export` job because their size is
+unpredictable; that job does not exist. Beyond 40 the export is refused
+with an explanation. **This is the item most likely to bite in
+production** — a serverless response has a size ceiling a local dev
+server does not, so a bundle that works here can fail deployed. Build the
+job before promising CV bundles to a customer.
+
+**4. `exceljs` carries a moderate advisory through `uuid`.**
+GHSA-w5hq-g745-h8pq — a missing buffer bounds check in uuid v3/v5/v6,
+reachable only when a `buf` argument is passed, which exceljs does not
+do. There is no semver-compatible fix; `npm audit fix --force` would
+change exceljs itself. Left as-is deliberately rather than forcing a
+breaking downgrade over an advisory our usage cannot reach. Recheck when
+exceljs bumps its uuid.
+
+**5. Export PDFs are Latin-1 only.** No font is registered, so
+@react-pdf's built-in Helvetica is used — a font fetch failing inside a
+request would turn an export into a 500. The cost is that a candidate
+whose name needs Devanagari or Tamil will not render in the PDF. Worth
+fixing with a bundled font file the first time it matters, which for an
+Indian market may be soon.
+
+**6. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
 middleware convention and warns on every boot:
 `npx @next/codemod@canary middleware-to-proxy .` **The migration must carry
 the public-path list forward** — `/apply`, `/api/apply` and `/api/cron`. Drop
 them and intake and cron both break in production while looking fine locally.
 
-**4. Twenty-nine requirements may be too many to mark by hand.** The CA JD
+**7. Twenty-nine requirements may be too many to mark by hand.** The CA JD
 genuinely contains all of them, and some are boilerplate nobody would gate on
 ("Communication skills"). Deliberately *not* filtered — that would mean the
 model deciding what matters, which the design refuses. If marking them proves
 tedious the fix is UI (group or bulk-dismiss soft skills), never a cleverer
 prompt.
 
-**5. Tally hallucination — accepted, not fixed.** Screening credits Manu
+**8. Tally hallucination — accepted, not fixed.** Screening credits Manu
 the top-ranked candidate with Tally experience her CV never mentions, surviving two
 prompt revisions. Decided 22 Aug 2026: accept as a known model limitation;
 revisit only if the pattern repeats. See `TechDecisions.md` §7.
 
-**6. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
+**9. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
 `.doc` path, but no image-only PDF has been tried. Low priority now the path
 itself works.
 

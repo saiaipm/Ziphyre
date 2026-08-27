@@ -11,188 +11,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ApplicationListItem } from "@/lib/applications";
 import { STAGE_LABELS, STAGE_ORDER, type StageKey } from "@/lib/stages";
+import { RELOCATION_OPTIONS } from "@/lib/apply/schema";
+import {
+  COMPONENTS,
+  DEFAULT_FILTERS,
+  TEXT_FIELDS,
+  isoDate,
+  type ComponentKey,
+  type Filters,
+  type SortKey,
+} from "@/lib/pipeline-filtering";
 
 /**
- * FR-66, FR-67, FR-69, FR-70 for the fields the pipeline list already
- * carries: overall score, each component rating, must-have result,
- * screening status and date received, plus sorting.
- *
- * **Filtering runs in the browser, not the query.** Tech spec §9 says
- * server-side, and that is right at scale — but the whole list is
- * already loaded into this component, and §15 puts the realistic
- * ceiling at "several hundred applications per opening". Filtering an
- * array that size is instant and needs no refetch, where a round trip
- * per keystroke would feel slower and be more code. Revisit if that
- * ceiling assumption ever stops holding.
- *
- * Still to build (the rest of FR-66, and FR-68): filters over form
- * answers — location, notice period, CTC, relocation, declared
- * experience — which need those answers plumbed into the list, and
- * carry FR-68's obligation to count and reveal the Not-provided
- * candidates a field filter excludes.
+ * The filter bar. The rules it drives live in
+ * `@/lib/pipeline-filtering` — this file is only the controls, the
+ * chips (FR-69) and FR-68's disclosure line.
  */
-
-export const COMPONENTS = [
-  { key: "jdFit", label: "JD Fit" },
-  { key: "experience", label: "Experience" },
-  { key: "skills", label: "Skills" },
-  { key: "qualification", label: "Qualification" },
-  { key: "location", label: "Location" },
-] as const;
-
-export type ComponentKey = (typeof COMPONENTS)[number]["key"];
-
-export type SortKey =
-  | "score-desc"
-  | "score-asc"
-  | "date-desc"
-  | "date-asc"
-  | "name";
-
-export type Filters = {
-  minOverall: string;
-  componentKey: ComponentKey | "any";
-  componentMin: string;
-  mustHave: "any" | "met" | "unmet";
-  /** FR-66. Meaningless before M4 — nothing could leave `screened`. */
-  stage: StageKey | "any" | "open";
-  status: "any" | "complete" | "review";
-  /** FR-66's "date received", over `submittedAt`. */
-  since: "any" | "7" | "30" | "custom";
-  /** Inclusive `YYYY-MM-DD` bounds, used only when `since` is custom. */
-  from: string;
-  to: string;
-  sort: SortKey;
-};
-
-/** Local calendar date as `YYYY-MM-DD` — never `toISOString()`, which
- *  converts to UTC and lands on yesterday for anyone east of Greenwich,
- *  India included. */
-export function isoDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-export const DEFAULT_FILTERS: Filters = {
-  minOverall: "any",
-  componentKey: "any",
-  componentMin: "5",
-  mustHave: "any",
-  stage: "any",
-  status: "any",
-  since: "any",
-  // Empty here, and filled with today the moment "Exact dates" is
-  // chosen. Calling `new Date()` at module scope would evaluate once on
-  // the server and again in the browser, and those two can land on
-  // different days across a timezone or midnight boundary — the kind of
-  // hydration mismatch this codebase has already been bitten by once.
-  from: "",
-  to: "",
-  sort: "score-desc",
-};
 
 const SCORE_STEPS = ["5", "6", "7", "8", "9"];
 
-/** FR-67: every active filter narrows the result; they combine. */
-export function applyFilters(
-  items: ApplicationListItem[],
-  f: Filters,
-): ApplicationListItem[] {
-  let out = items;
-
-  if (f.minOverall !== "any") {
-    const min = Number(f.minOverall);
-    out = out.filter((a) => (a.screening?.overall ?? -1) >= min);
-  }
-
-  if (f.componentKey !== "any") {
-    const min = Number(f.componentMin);
-    out = out.filter((a) => (a.screening?.[f.componentKey as ComponentKey] ?? -1) >= min);
-  }
-
-  if (f.mustHave !== "any") {
-    out = out.filter((a) => {
-      if (!a.screening) return false;
-      return f.mustHave === "met"
-        ? a.screening.meetsAllMustHaves
-        : !a.screening.meetsAllMustHaves;
-    });
-  }
-
-  // "Still in play" is the filter Meera actually reaches for once she
-  // has been through a pile once: everyone she has not yet dispositioned.
-  // Offering it saves selecting three stages to express one intent.
-  if (f.stage === "open") {
-    out = out.filter(
-      (a) => a.currentStage !== "rejected" && a.currentStage !== "on_hold",
-    );
-  } else if (f.stage !== "any") {
-    out = out.filter((a) => a.currentStage === f.stage);
-  }
-
-  if (f.status !== "any") {
-    out = out.filter((a) =>
-      f.status === "review"
-        ? a.screeningStatus === "needs_manual_review"
-        : a.screeningStatus === "complete",
-    );
-  }
-
-  // FR-66's "date received" reads `submittedAt` — when the candidate
-  // applied — falling back to `createdAt` only if it is somehow absent.
-  if (f.since === "custom") {
-    if (f.from) {
-      const start = new Date(`${f.from}T00:00:00`).getTime();
-      out = out.filter((a) => receivedAt(a) >= start);
-    }
-    if (f.to) {
-      // End of the chosen day, not its midnight — otherwise picking the
-      // same date for both ends matches nothing, which reads as a bug.
-      const end = new Date(`${f.to}T23:59:59.999`).getTime();
-      out = out.filter((a) => receivedAt(a) <= end);
-    }
-  } else if (f.since !== "any") {
-    const cutoff = Date.now() - Number(f.since) * 86_400_000;
-    out = out.filter((a) => receivedAt(a) >= cutoff);
-  }
-
-  return sortItems(out, f.sort);
-}
-
-function receivedAt(a: ApplicationListItem): number {
-  return new Date(a.submittedAt ?? a.createdAt).getTime();
-}
-
-function sortItems(items: ApplicationListItem[], sort: SortKey) {
-  const copy = [...items];
-  switch (sort) {
-    case "score-asc":
-      return copy.sort(
-        (a, b) => (a.screening?.overall ?? 99) - (b.screening?.overall ?? 99),
-      );
-    // Sorted on the same field the date filter reads, so "Newest first"
-    // and "Last 7 days" can never disagree about what newest means.
-    case "date-desc":
-      return copy.sort((a, b) => receivedAt(b) - receivedAt(a));
-    case "date-asc":
-      return copy.sort((a, b) => receivedAt(a) - receivedAt(b));
-    case "name":
-      return copy.sort((a, b) =>
-        (a.candidateName ?? "").localeCompare(b.candidateName ?? ""),
-      );
-    case "score-desc":
-    default:
-      // Unscreened first: an application with no score yet must not be
-      // buried below everyone who has one (business rule §10).
-      return copy.sort(
-        (a, b) => (b.screening?.overall ?? 99) - (a.screening?.overall ?? 99),
-      );
-  }
-}
-
-/** FR-69: what is active must be visible, and clearable one at a time. */
 function activeChips(f: Filters): { key: keyof Filters; label: string }[] {
   const chips: { key: keyof Filters; label: string }[] = [];
   if (f.minOverall !== "any")
@@ -234,6 +72,17 @@ function activeChips(f: Filters): { key: keyof Filters; label: string }[] {
   } else if (f.since !== "any") {
     chips.push({ key: "since", label: `Last ${f.since} days` });
   }
+  if (f.fieldKey !== "any" && f.fieldValue.trim() !== "") {
+    const label = TEXT_FIELDS.find((t) => t.key === f.fieldKey)?.label;
+    chips.push({ key: "fieldValue", label: `${label}: “${f.fieldValue}”` });
+  }
+  if (f.minExperience !== "any")
+    chips.push({
+      key: "minExperience",
+      label: `${f.minExperience}+ years experience`,
+    });
+  if (f.relocate !== "any")
+    chips.push({ key: "relocate", label: `Relocate: ${f.relocate}` });
   return chips;
 }
 
@@ -242,11 +91,15 @@ export function PipelineFilters({
   onChange,
   shown,
   total,
+  hiddenForMissing,
+  missingFieldLabels,
 }: {
   filters: Filters;
   onChange: (next: Filters) => void;
   shown: number;
   total: number;
+  hiddenForMissing: number;
+  missingFieldLabels: string[];
 }) {
   const set = <K extends keyof Filters>(key: K, value: Filters[K]) =>
     onChange({ ...filters, [key]: value });
@@ -385,23 +238,111 @@ export function PipelineFilters({
           </div>
         )}
 
+        <Picker
+          value={filters.minExperience}
+          onValueChange={(v) => set("minExperience", v)}
+          placeholder="Any experience"
+          width="w-[11rem]"
+          options={[
+            { value: "any", label: "Any experience" },
+            ...["1", "2", "3", "5", "8", "10"].map((n) => ({
+              value: n,
+              label: `${n}+ years`,
+            })),
+          ]}
+        />
+
+        <Picker
+          value={filters.relocate}
+          onValueChange={(v) => set("relocate", v as Filters["relocate"])}
+          placeholder="Relocation"
+          width="w-[12rem]"
+          options={[
+            { value: "any", label: "Any relocation answer" },
+            ...RELOCATION_OPTIONS.map((o) => ({
+              value: o,
+              label: `Relocate: ${o}`,
+            })),
+          ]}
+        />
+
+        {/* One search box against a chosen field, rather than four
+            boxes. Notice period and CTC are free text on the apply
+            form, so this matches text — see TEXT_FIELDS. */}
+        <div className="flex items-center gap-1.5">
+          <Picker
+            value={filters.fieldKey}
+            onValueChange={(v) => set("fieldKey", v as Filters["fieldKey"])}
+            placeholder="Any field"
+            width="w-[10rem]"
+            options={[
+              { value: "any", label: "Search a field…" },
+              ...TEXT_FIELDS.map((t) => ({ value: t.key, label: t.label })),
+            ]}
+          />
+          {filters.fieldKey !== "any" && (
+            <Input
+              value={filters.fieldValue}
+              onChange={(e) => set("fieldValue", e.target.value)}
+              placeholder={`e.g. ${
+                filters.fieldKey === "currentLocation"
+                  ? "Hyderabad"
+                  : filters.fieldKey === "noticePeriod"
+                    ? "30 days"
+                    : "12 LPA"
+              }`}
+              className="h-8 w-[10rem] text-xs"
+              aria-label={`Search ${
+                TEXT_FIELDS.find((t) => t.key === filters.fieldKey)?.label
+              }`}
+            />
+          )}
+        </div>
+
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Sort</span>
           <Picker
             value={filters.sort}
             onValueChange={(v) => set("sort", v as SortKey)}
             placeholder="Sort"
-            width="w-[11rem]"
+            width="w-[13rem]"
             options={[
               { value: "score-desc", label: "Highest score" },
               { value: "score-asc", label: "Lowest score" },
               { value: "date-desc", label: "Newest first" },
               { value: "date-asc", label: "Oldest first" },
               { value: "name", label: "Name (A–Z)" },
+              // FR-70's "any component rating".
+              ...COMPONENTS.map((c) => ({
+                value: `component-${c.key}`,
+                label: `Highest ${c.label}`,
+              })),
             ]}
           />
         </div>
       </div>
+
+      {/* FR-68. Excluding people for never having been asked a question
+          is defensible; doing it silently is not. The count is shown
+          whether or not they are currently hidden, so the number never
+          disappears just because it was acted on. */}
+      {hiddenForMissing > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">
+            {hiddenForMissing}{" "}
+            {hiddenForMissing === 1 ? "candidate has" : "candidates have"} no{" "}
+            {missingFieldLabels.join(" or ").toLowerCase()} recorded
+            {filters.includeMissing ? " — shown anyway." : " and are hidden."}
+          </span>
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:text-foreground"
+            onClick={() => set("includeMissing", !filters.includeMissing)}
+          >
+            {filters.includeMissing ? "Hide them" : "Show them"}
+          </button>
+        </div>
+      )}
 
       {chips.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">

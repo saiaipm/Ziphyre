@@ -95,25 +95,38 @@ export function NeedsReviewCallout({ count }: { count: number }) {
   );
 }
 
-/** The tile used across all three summaries. */
+/**
+ * The tile used across all three summaries.
+ *
+ * `outOf` renders the value as "7 / 8" for tiles that are a **subset**
+ * of the total rather than a total themselves. Without it "Still in
+ * play: 7" sits beside "Applications: 8" and reads as the same number
+ * gone wrong — it was misread that way during review, by the person who
+ * specified the rule that these numbers must reconcile. Showing the
+ * denominator makes the relationship visible instead of inferable,
+ * which is cheaper than being right and disbelieved.
+ */
 export function SummaryTile({
   label,
   value,
   accent,
+  outOf,
 }: {
   label: string;
   value: number;
   accent?: string;
+  outOf?: number;
 }) {
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <p
-        className={cn(
-          "text-2xl font-semibold tabular-nums",
-          value === 0 ? undefined : accent,
+      <p className="text-2xl font-semibold tabular-nums">
+        <span className={value === 0 ? undefined : accent}>{value}</span>
+        {outOf !== undefined && (
+          <span className="text-base font-normal text-muted-foreground">
+            {" / "}
+            {outOf}
+          </span>
         )}
-      >
-        {value}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
     </div>
