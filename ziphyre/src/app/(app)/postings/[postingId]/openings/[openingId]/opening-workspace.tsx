@@ -54,6 +54,7 @@ type Props = {
 
 export function OpeningWorkspace({
   openingId,
+  postingId,
   title,
   workLocation,
   jdContent,
@@ -92,6 +93,7 @@ export function OpeningWorkspace({
         <TabsContent value="pipeline" className="space-y-6">
           <CandidatesCard
             openingId={openingId}
+            postingId={postingId}
             initialApplications={initialApplications}
           />
         </TabsContent>

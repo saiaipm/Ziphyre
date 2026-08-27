@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ApplicationListItem } from "@/lib/applications";
+import { STAGE_LABELS, STAGE_ORDER, type StageKey } from "@/lib/stages";
 
 /**
  * FR-66, FR-67, FR-69, FR-70 for the fields the pipeline list already
@@ -54,6 +55,8 @@ export type Filters = {
   componentKey: ComponentKey | "any";
   componentMin: string;
   mustHave: "any" | "met" | "unmet";
+  /** FR-66. Meaningless before M4 — nothing could leave `screened`. */
+  stage: StageKey | "any" | "open";
   status: "any" | "complete" | "review";
   since: "any" | "7" | "30";
   sort: SortKey;
@@ -64,6 +67,7 @@ export const DEFAULT_FILTERS: Filters = {
   componentKey: "any",
   componentMin: "5",
   mustHave: "any",
+  stage: "any",
   status: "any",
   since: "any",
   sort: "score-desc",
@@ -95,6 +99,17 @@ export function applyFilters(
         ? a.screening.meetsAllMustHaves
         : !a.screening.meetsAllMustHaves;
     });
+  }
+
+  // "Still in play" is the filter Meera actually reaches for once she
+  // has been through a pile once: everyone she has not yet dispositioned.
+  // Offering it saves selecting three stages to express one intent.
+  if (f.stage === "open") {
+    out = out.filter(
+      (a) => a.currentStage !== "rejected" && a.currentStage !== "on_hold",
+    );
+  } else if (f.stage !== "any") {
+    out = out.filter((a) => a.currentStage === f.stage);
   }
 
   if (f.status !== "any") {
@@ -151,6 +166,14 @@ function activeChips(f: Filters): { key: keyof Filters; label: string }[] {
     chips.push({
       key: "mustHave",
       label: f.mustHave === "met" ? "Meets all must-haves" : "Missing a must-have",
+    });
+  if (f.stage !== "any")
+    chips.push({
+      key: "stage",
+      label:
+        f.stage === "open"
+          ? "Still in play"
+          : STAGE_LABELS[f.stage as StageKey],
     });
   if (f.status !== "any")
     chips.push({
@@ -222,6 +245,18 @@ export function PipelineFilters({
             { value: "any", label: "Any must-have result" },
             { value: "met", label: "Meets all must-haves" },
             { value: "unmet", label: "Missing a must-have" },
+          ]}
+        />
+
+        <Picker
+          value={filters.stage}
+          onValueChange={(v) => set("stage", v as Filters["stage"])}
+          placeholder="Any stage"
+          width="w-[10rem]"
+          options={[
+            { value: "any", label: "Any stage" },
+            { value: "open", label: "Still in play" },
+            ...STAGE_ORDER.map((s) => ({ value: s, label: STAGE_LABELS[s] })),
           ]}
         />
 

@@ -15,8 +15,8 @@ file is deliberately just the moving parts.
 | `TechDecisions.md` | Stack truth and the *why* behind it. Stands in for `CodeContext.md` until there's enough code to write that properly |
 | `ProductNotes/PN-001-…md` | The original feature ask |
 | `ProductNotes/PN-002-…md` | Why Google intake was replaced by a hosted apply page |
-| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-105 (Draft 7; FR-1–4, 19–29, 36, 62–65 retired) |
-| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 5) |
+| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-105 (Draft 8; FR-1–4, 19–29, 36, 62–65 retired) |
+| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 7) |
 | `Testing/README.md` | Why the baseline file is gitignored, and what it's for |
 
 **Read `ziphyre/AGENTS.md` before writing code.** This Next.js version has
@@ -83,7 +83,10 @@ candidate applied through `/apply/[token]` with **no Google account on
 either side**, saw confirmation immediately, and was screened 8.8/10
 automatically.
 
-**M4 — UI shell done, the actions themselves are not.** Shipped 27 Aug 2026:
+**M4 — done, exit bar met.** The shell shipped in the morning of 27 Aug
+2026; the stage transitions that make it move shipped the same day.
+
+The shell:
 
 - **Home dashboard** (FR-101 – FR-105): active postings and openings, total
   applications, the five-stage funnel that sums exactly to that total, and a
@@ -99,15 +102,42 @@ automatically.
 - Collapsible sidebar; page content centred; a way out of a half-filled
   create form.
 
-**Next: M4 proper — the stage transitions.** Moving a candidate to
-Shortlisted, On hold or Rejected; batch actions (FR-56); disposition
-(FR-57/58); stage history (FR-59); reassignment between openings (FR-60).
+**The stage transitions (FR-56 – FR-60)** — migration
+`20260827120000_m4_stage_transitions.sql`, applied. Verified live against
+the real CA pipeline, not just typechecked:
 
-**Why this matters more than it sounds:** nothing can currently change an
-application's stage except screening's own `new → screened`. So the Home
-funnel will read all-Screened forever, and the Shortlisted tile will sit at
-zero, until these land. The dashboard is built; the actions that move it are
-not.
+- **Single and batch moves** (FR-56). Shortlisted the top-ranked CA, then
+  rejected the two lowest scorers in one action. **Two `stage_event` rows,
+  one per candidate** — no batch shortcut, per FR-59.
+- **Disposition and note** (FR-57/58), both optional, both skippable, with
+  an explicit Skip button. Recorded against each candidate in a batch.
+- **Stage history** (FR-59) on the application, showing August's system
+  event as "automatically, when screening finished" and today's move
+  attributed by name and time.
+- **Moving back works and the history keeps the reversal.** Un-rejected a
+  candidate; the score stayed 3.8, and the rejection with its disposition
+  and note is still on record.
+- **Reassignment** (FR-60). Moved a CA-qualified candidate from the CA opening to a
+  new Accounts Executive opening with a rescreen. **The rescreen used the
+  new opening's JD** — verified through `jd_version_id`, not assumed — and
+  scored 9.4 against 6.8 for the CA role, which is the right direction for
+  a CA-qualified candidate applying where CA isn't required.
+- **The guards fire.** A non-member actor, an unknown stage, a move to the
+  same opening and a cross-posting move are all refused by the database,
+  tested directly.
+- **The Home funnel moves.** 0 New · 5 Screened · 1 Shortlisted · 0 On hold
+  · 2 Rejected — summing to 8, so FR-102's arithmetic still reconciles.
+
+**Also added:** the FR-66 stage filter, plus a "Still in play" option that
+hides Rejected and On hold in one choice. It was pointless before — every
+application read `Screened`, so it was a control with one setting.
+
+**Next: M5 — export (FR-71 – FR-75) and retention (§11).** With M4 done, a
+role can now be worked end to end inside Ziphyre; what it cannot yet do is
+leave. Export is the smaller job. **Retention is the one that matters**:
+Ziphyre now holds the only copy of every CV it has received, and tech spec
+§11 says the purge job must be tested before it ever runs in production.
+Nothing else in the build deletes real people's data.
 
 ---
 
@@ -143,26 +173,34 @@ baseline's "treat CA as a hard gate" scenario). Compared to
 **Git:** on `main`, in sync with `origin/main` at `bd190aa`. Everything
 described above is merged. No unmerged branches carry live work.
 
-**Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): 14 tables, RLS on all.
+**Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): 14 tables, RLS on all,
+13 migrations applied.
 `organization`, `app_user`, `membership`, `posting`, `opening`, `jd_version`,
 `requirement`, `provider_settings`, `candidate`, `application`, `screening`,
 `stage_event`, `job`, `apply_attempt` — plus a private `cvs` Storage bucket.
 `google_connection` and `unmatched_submission` were dropped by M3.5.
 
 **Local data** (the demo org): 1 open posting "Finance hiring, August,
-Demo" with one opening, Chartered Accountant / Hyderabad — 29 requirements,
-2 marked must-have (CA qualification, Tally), 8 applications all at stage
-`screened`. Seven are the real CA CVs by manual upload; one ("Sai Phani")
-came through the retired Google path and keeps `source = 'form'` for
-provenance.
+Demo", now with **two** openings. Chartered Accountant / Hyderabad — 29
+requirements, 2 must-have (CA qualification, Tally) — holds 7
+applications: 1 Shortlisted, 4 Screened, 2 Rejected. **Accounts Executive
+/ Hyderabad was created 27 Aug purely to test FR-60** and holds the single
+application reassigned into it. Delete it if the demo should go back to
+one opening; nothing depends on it.
 
-**Providers configured**, in fallback order:
+Of the 8 applications, seven are the real CA CVs by manual upload; one
+("Sai Phani") came through the retired Google path and keeps
+`source = 'form'` for provenance.
+
+**Providers configured**, in fallback order. *Re-entered 27 Aug 2026 after
+the key rotation, in a different order from before — NVIDIA is now the
+primary, not OpenAI. Worth knowing before reading any provenance line.*
 
 | # | Provider | Model | Key ends |
 |---|---|---|---|
-| 0 | OpenAI | gpt-4o-mini | ftEA |
-| 1 | Google Gemini | gemini-3.5-flash-lite | FrXA |
-| 2 | NVIDIA NIM | openai/gpt-oss-20b | kBBn |
+| 0 | NVIDIA NIM | openai/gpt-oss-20b | j2WZ |
+| 1 | OpenAI | gpt-4o-mini | RnsA |
+| 2 | Google Gemini | gemini-3.5-flash-lite | preg |
 
 ---
 
@@ -172,43 +210,42 @@ Split so a fresh session can see at a glance what still needs a human.
 
 ### Needs a decision or action
 
-**1. Rotate three API keys.** Before Server Function argument logging was
-disabled, Next.js wrote every saved key to the dev terminal in plaintext —
-the OpenAI, NVIDIA and Google keys, plus a second NVIDIA key pasted inside a
-code snippet. Logging is off now (`next.config.ts`), but those keys were
-exposed. *The user said 27 Aug 2026 they would do this; confirm before
-assuming it is done.*
+**1. A screening's "used a fallback" note is computed against today's
+provider order, so it lies after a reorder.** `getApplicationsForOpening`
+in `src/lib/applications.ts` derives `usedFallback` by comparing the stored
+provider against the *current* chain. The 27 Aug reorder therefore made
+every 22 Aug screening — run by gpt-4o-mini, the primary at the time —
+render as "Screened by GPT-4o mini after your primary provider failed".
+That is false, and FR-86's whole point is that the admin is told honestly
+which model judged a candidate. **Fix by recording the fact at write time**
+(a `was_fallback` column set by the screening job, which already knows)
+rather than deriving it at read time. Found 27 Aug while verifying M4.
 
-**2. M4 proper — stage transitions.** The largest functional gap. Nothing can
-move an application off `screened`, so the Home funnel and the Shortlisted
-tile cannot change. Covers FR-56 (batch), FR-57/58 (disposition), FR-59
-(history), FR-60 (reassignment).
-
-**3. The rest of FR-66, and FR-68.** Filters over *form answers* — location,
+**2. The rest of FR-66, and FR-68.** Filters over *form answers* — location,
 notice period, CTC, relocation, declared experience. These need the answers
 plumbed into `getApplicationsForOpening`, and they carry FR-68's obligation
 to count and reveal candidates excluded for having "Not provided" in a
 filtered field. The score/date/status filters that exist do not touch this.
 
-**4. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
+**3. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
 middleware convention and warns on every boot:
 `npx @next/codemod@canary middleware-to-proxy .` **The migration must carry
 the public-path list forward** — `/apply`, `/api/apply` and `/api/cron`. Drop
 them and intake and cron both break in production while looking fine locally.
 
-**5. Twenty-nine requirements may be too many to mark by hand.** The CA JD
+**4. Twenty-nine requirements may be too many to mark by hand.** The CA JD
 genuinely contains all of them, and some are boilerplate nobody would gate on
 ("Communication skills"). Deliberately *not* filtered — that would mean the
 model deciding what matters, which the design refuses. If marking them proves
 tedious the fix is UI (group or bulk-dismiss soft skills), never a cleverer
 prompt.
 
-**6. Tally hallucination — accepted, not fixed.** Screening credits Manu
+**5. Tally hallucination — accepted, not fixed.** Screening credits Manu
 the top-ranked candidate with Tally experience her CV never mentions, surviving two
 prompt revisions. Decided 22 Aug 2026: accept as a known model limitation;
 revisit only if the pattern repeats. See `TechDecisions.md` §7.
 
-**7. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
+**6. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
 `.doc` path, but no image-only PDF has been tried. Low priority now the path
 itself works.
 
@@ -248,6 +285,11 @@ ran against, not the original upload.
   blocker.
 - **Opening page mixed setup with the candidate list** — split into
   Pipeline | Setup tabs, 27 Aug.
+- **Rotate three API keys** — done 27 Aug 2026, confirmed by the user and
+  visible in the database: all three key hints changed and all three
+  `validated_at` timestamps are from that morning.
+- **M4 proper — stage transitions** — shipped and verified 27 Aug. The Home
+  funnel is no longer stuck at all-Screened.
 
 </details>
 

@@ -30,7 +30,24 @@ import {
 } from "./pipeline-filters";
 import type { ApplicationListItem } from "@/lib/applications";
 import {
+  STAGE_LABELS,
+  stageTakesDisposition,
+  type DispositionKey,
+  type StageKey,
+} from "@/lib/stages";
+import {
+  BatchBar,
+  ReassignDialog,
+  RowStageMenu,
+  SelectCheckbox,
+  StageBadge,
+  StageHistoryPanel,
+  StageMoveDialog,
+  type PendingMove,
+} from "./stage-controls";
+import {
   addCandidatesToOpening,
+  changeApplicationStage,
   getCvViewUrl,
   refreshApplications,
   retryScreening,
@@ -42,20 +59,108 @@ type PendingFile = { key: string; file: File; name: string };
 
 export function CandidatesCard({
   openingId,
+  postingId,
   initialApplications,
 }: {
   openingId: string;
+  postingId: string;
   initialApplications: ApplicationListItem[];
 }) {
   const [applications, setApplications] = useState(initialApplications);
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [move, setMove] = useState<PendingMove | null>(null);
+  const [moving, setMoving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sorting lives inside applyFilters, so the server's default ordering
   // and the user's chosen one can't disagree.
   const visible = applyFilters(applications, filters);
+
+  // A selection only ever means what is currently on screen. Filtering
+  // to "score ≥ 8", selecting all, then clearing the filter must not
+  // silently carry twenty invisible candidates into a rejection.
+  const visibleIds = new Set(visible.map((a) => a.id));
+  const selectedVisible = [...selected].filter((id) => visibleIds.has(id));
+  const allVisibleSelected =
+    visible.length > 0 && selectedVisible.length === visible.length;
+
+  function toggleSelected(id: string, on: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible(on: boolean) {
+    setSelected(on ? new Set(visible.map((a) => a.id)) : new Set());
+  }
+
+  /**
+   * FR-57 gives disposition to On hold and Rejected only, so those two
+   * open the dialog and the rest move on the click. A confirm step with
+   * nothing to confirm teaches people to dismiss confirm steps.
+   */
+  function requestMove(applicationIds: string[], toStage: StageKey) {
+    if (applicationIds.length === 0) return;
+    const singleName =
+      applicationIds.length === 1
+        ? (applications.find((a) => a.id === applicationIds[0])?.candidateName ??
+          "this candidate")
+        : null;
+
+    const pendingMove: PendingMove = { applicationIds, toStage, singleName };
+    if (stageTakesDisposition(toStage)) setMove(pendingMove);
+    else void commitMove(pendingMove, null, "");
+  }
+
+  async function commitMove(
+    pendingMove: PendingMove,
+    disposition: DispositionKey | null,
+    note: string,
+  ) {
+    setMoving(true);
+    const result = await changeApplicationStage({
+      applicationIds: pendingMove.applicationIds,
+      toStage: pendingMove.toStage,
+      disposition,
+      note,
+      postingId,
+      openingId,
+    });
+    setMoving(false);
+    setMove(null);
+
+    if (!result.ok) {
+      toast.error("Couldn't move", { description: result.error });
+      return;
+    }
+
+    const { moved, failed } = result.data;
+    // Partial success is named rather than rounded up to success —
+    // an admin who is told "20 moved" and finds 17 stops trusting the
+    // number that matters most on this screen.
+    if (failed > 0) {
+      toast.warning(`Moved ${moved} of ${moved + failed}`, {
+        description: `${failed} couldn't be moved. They are unchanged — try them again.`,
+      });
+    } else {
+      toast.success(
+        moved === 1
+          ? `${pendingMove.singleName} → ${STAGE_LABELS[pendingMove.toStage]}`
+          : `${moved} candidates → ${STAGE_LABELS[pendingMove.toStage]}`,
+        { description: "Your decision is recorded. Scores never change." },
+      );
+    }
+
+    setSelected(new Set());
+    const refreshed = await refreshApplications(openingId);
+    if (refreshed.ok) setApplications(refreshed.data);
+  }
 
   const hasInFlight = applications.some(
     (a) => a.screeningStatus === "pending" || a.screeningStatus === "in_progress",
@@ -218,32 +323,108 @@ export function CandidatesCard({
                 to see all {applications.length}.
               </p>
             ) : (
-              <ul className="divide-y divide-divider">
-                {visible.map((app) => (
-                  <ApplicationRow key={app.id} app={app} onRetry={onRetry} />
-                ))}
-              </ul>
+              <>
+                <div className="flex items-center gap-3 border-b border-divider pb-2">
+                  <SelectCheckbox
+                    checked={allVisibleSelected}
+                    onCheckedChange={toggleAllVisible}
+                    label={
+                      allVisibleSelected
+                        ? "Clear selection"
+                        : `Select all ${visible.length} shown`
+                    }
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {selectedVisible.length > 0
+                      ? `${selectedVisible.length} selected`
+                      : `Select all ${visible.length} shown`}
+                  </span>
+                </div>
+
+                <ul className="divide-y divide-divider">
+                  {visible.map((app) => (
+                    <ApplicationRow
+                      key={app.id}
+                      app={app}
+                      postingId={postingId}
+                      openingId={openingId}
+                      onRetry={onRetry}
+                      selected={selected.has(app.id)}
+                      onSelectedChange={(on) => toggleSelected(app.id, on)}
+                      onMove={(stage) => requestMove([app.id], stage)}
+                      onReassigned={async () => {
+                        const refreshed = await refreshApplications(openingId);
+                        if (refreshed.ok) setApplications(refreshed.data);
+                      }}
+                      busy={moving}
+                    />
+                  ))}
+                </ul>
+
+                <BatchBar
+                  count={selectedVisible.length}
+                  onMove={(stage) => requestMove(selectedVisible, stage)}
+                  onClear={() => setSelected(new Set())}
+                  disabled={moving}
+                />
+              </>
             )}
           </>
         )}
       </div>
+
+      <StageMoveDialog
+        move={move}
+        saving={moving}
+        onCancel={() => setMove(null)}
+        onConfirm={(disposition, note) => {
+          if (move) void commitMove(move, disposition, note);
+        }}
+      />
     </section>
   );
 }
 
 function ApplicationRow({
   app,
+  postingId,
+  openingId,
   onRetry,
+  selected,
+  onSelectedChange,
+  onMove,
+  onReassigned,
+  busy,
 }: {
   app: ApplicationListItem;
+  postingId: string;
+  openingId: string;
   onRetry: (applicationId: string) => void;
+  selected: boolean;
+  onSelectedChange: (on: boolean) => void;
+  onMove: (stage: StageKey) => void;
+  onReassigned: () => void;
+  busy: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // Bumped after a move made from inside the dialog, so the history
+  // list below it reflects the change that was just made rather than
+  // the state it was opened at.
+  const [historyKey, setHistoryKey] = useState(0);
   const name = app.candidateName ?? "Unnamed candidate";
 
+  // FR-47: an unreadable CV is held at its stage with a reason, never
+  // scored. It is still a real candidate, so it is still selectable and
+  // still movable — deciding without a score is exactly what this state
+  // asks the admin to do.
   if (app.screeningStatus === "needs_manual_review") {
     return (
       <li className="flex items-start gap-3 py-3">
+        <SelectCheckbox
+          checked={selected}
+          onCheckedChange={onSelectedChange}
+          label={`Select ${name}`}
+        />
         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fit-review" aria-hidden />
         <div className="flex-1">
           <p className="text-sm font-medium">{name}</p>
@@ -251,6 +432,12 @@ function ApplicationRow({
             Needs manual review — {app.screeningFailureReason}
           </p>
         </div>
+        <StageBadge stage={app.currentStage} />
+        <RowStageMenu
+          currentStage={app.currentStage}
+          onMove={onMove}
+          disabled={busy}
+        />
         <Button size="sm" variant="outline" onClick={() => onRetry(app.id)}>
           <RotateCcw className="size-3.5" aria-hidden />
           Retry
@@ -262,9 +449,15 @@ function ApplicationRow({
   if (app.screeningStatus !== "complete" || !app.screening) {
     return (
       <li className="flex items-center gap-3 py-3">
+        <SelectCheckbox
+          checked={selected}
+          onCheckedChange={onSelectedChange}
+          label={`Select ${name}`}
+        />
         <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
-        <p className="text-sm font-medium">{name}</p>
+        <p className="flex-1 text-sm font-medium">{name}</p>
         <span className="text-xs text-muted-foreground">Screening…</span>
+        <StageBadge stage={app.currentStage} />
       </li>
     );
   }
@@ -275,11 +468,16 @@ function ApplicationRow({
 
   return (
     <>
-      <li>
+      <li className="flex items-center gap-3 py-3 hover:bg-muted/50">
+        <SelectCheckbox
+          checked={selected}
+          onCheckedChange={onSelectedChange}
+          label={`Select ${name}`}
+        />
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex w-full items-center gap-3 py-3 text-left hover:bg-muted/50"
+          className="flex flex-1 items-center gap-3 text-left"
         >
           <div className="flex-1">
             <p className="text-sm font-medium">{name}</p>
@@ -300,6 +498,12 @@ function ApplicationRow({
             {s.overall.toFixed(1)} / 10
           </Badge>
         </button>
+        <StageBadge stage={app.currentStage} />
+        <RowStageMenu
+          currentStage={app.currentStage}
+          onMove={onMove}
+          disabled={busy}
+        />
       </li>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -369,6 +573,44 @@ function ApplicationRow({
             <p className="text-xs text-muted-foreground">
               Scored by {modelLabel(s.provider, s.model)}.
             </p>
+
+            {/* FR-59: the history belongs on the application, not on a
+                separate audit screen — the question "why was this
+                person dropped?" is asked while looking at them. */}
+            <div className="border-t border-divider pt-4">
+              <p className="text-xs font-semibold text-muted-foreground">
+                Stage history
+              </p>
+              <div className="mt-2">
+                <StageHistoryPanel
+                  applicationId={app.id}
+                  open={open}
+                  reloadKey={historyKey}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 border-t border-divider pt-4">
+              <StageBadge stage={app.currentStage} />
+              <RowStageMenu
+                currentStage={app.currentStage}
+                onMove={(stage) => {
+                  setHistoryKey((k) => k + 1);
+                  onMove(stage);
+                }}
+                disabled={busy}
+              />
+              <ReassignDialog
+                applicationId={app.id}
+                candidateName={name}
+                postingId={postingId}
+                fromOpeningId={openingId}
+                onDone={() => {
+                  setOpen(false);
+                  onReassigned();
+                }}
+              />
+            </div>
           </div>
           </div>
         </DialogContent>

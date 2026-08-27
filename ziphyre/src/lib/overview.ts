@@ -1,33 +1,17 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import type { StageKey } from "@/lib/stages";
 
 /**
  * FR-101 – FR-105. The organisation-wide summary above the per-opening
  * list on the home screen.
+ *
+ * The stage vocabulary moved to `@/lib/stages` in M4 so client
+ * components could share it; it is re-exported here so existing
+ * importers keep working and there is still only one definition.
  */
 
-export type StageKey =
-  | "new"
-  | "screened"
-  | "shortlisted"
-  | "on_hold"
-  | "rejected";
-
-export const STAGE_ORDER: StageKey[] = [
-  "new",
-  "screened",
-  "shortlisted",
-  "on_hold",
-  "rejected",
-];
-
-export const STAGE_LABELS: Record<StageKey, string> = {
-  new: "New",
-  screened: "Screened",
-  shortlisted: "Shortlisted",
-  on_hold: "On hold",
-  rejected: "Rejected",
-};
+export { STAGE_ORDER, STAGE_LABELS, type StageKey } from "@/lib/stages";
 
 export type OverviewMetrics = {
   activePostings: number;

@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { getProviderChain } from "@/lib/provider-settings";
 import type { ProviderId } from "@/lib/ai/providers";
+import type { DispositionKey, StageKey } from "@/lib/stages";
 
 /** FR-21's fixed field set, minus identity (name/email, which live on `candidate`). */
 export const FORM_FIELD_KEYS = [
@@ -49,7 +50,7 @@ export function describeFormAnswers(
 export type ApplicationListItem = {
   id: string;
   candidateName: string | null;
-  currentStage: string;
+  currentStage: StageKey;
   screeningStatus: string;
   screeningFailureReason: string | null;
   cvOriginalFilename: string | null;
@@ -130,7 +131,7 @@ export async function getApplicationsForOpening(
     return {
       id: row.id,
       candidateName: candidate?.full_name ?? null,
-      currentStage: row.current_stage,
+      currentStage: row.current_stage as StageKey,
       screeningStatus: row.screening_status,
       screeningFailureReason: row.screening_failure_reason,
       cvOriginalFilename: row.cv_original_filename,
@@ -166,4 +167,126 @@ export async function getApplicationsForOpening(
   });
 
   return items;
+}
+
+// ---------------------------------------------------------------------------
+// Stage history — FR-59
+// ---------------------------------------------------------------------------
+
+export type StageEvent = {
+  id: string;
+  fromStage: StageKey | null;
+  toStage: StageKey;
+  actorKind: "admin" | "system";
+  /** Null for a system event, and for an admin whose account is gone. */
+  actorName: string | null;
+  disposition: DispositionKey | null;
+  note: string | null;
+  createdAt: string;
+};
+
+/**
+ * FR-59: every stage change, who made it and when, oldest first so it
+ * reads as a story rather than a stack.
+ *
+ * `stage_event` is select-only under RLS (tech spec §3), so this is a
+ * plain read through the user's own client — the organisation scoping
+ * is the policy's job, not a filter written here that could be
+ * forgotten.
+ */
+export async function getStageHistory(
+  applicationId: string,
+): Promise<StageEvent[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("stage_event")
+    .select(
+      `id, from_stage, to_stage, actor_kind, disposition, note, created_at,
+       actor:actor_id (display_name, email)`,
+    )
+    .eq("application_id", applicationId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const actor = row.actor as unknown as {
+      display_name: string | null;
+      email: string;
+    } | null;
+    return {
+      id: row.id,
+      fromStage: (row.from_stage as StageKey | null) ?? null,
+      toStage: row.to_stage as StageKey,
+      actorKind: row.actor_kind as "admin" | "system",
+      actorName: actor ? (actor.display_name ?? actor.email) : null,
+      disposition: (row.disposition as DispositionKey | null) ?? null,
+      note: row.note,
+      createdAt: row.created_at,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Reassignment targets — FR-60
+// ---------------------------------------------------------------------------
+
+export type ReassignTarget = {
+  id: string;
+  title: string;
+  workLocation: string;
+  /** True when this candidate already has an application here (§9). */
+  alreadyApplied: boolean;
+};
+
+/**
+ * The other openings on the same posting, each marked with whether this
+ * candidate is already on it. Tech spec §9 requires the collision to be
+ * explained rather than hit as a constraint error — showing it before
+ * the click is the better half of that; `reassign_application` still
+ * refuses it authoritatively, because this list can go stale.
+ */
+export async function getReassignTargets(
+  applicationId: string,
+): Promise<ReassignTarget[]> {
+  const supabase = await createClient();
+
+  const { data: application, error } = await supabase
+    .from("application")
+    .select("candidate_id, opening_id, opening:opening_id (posting_id)")
+    .eq("id", applicationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!application) return [];
+
+  const postingId = (application.opening as unknown as { posting_id: string })
+    .posting_id;
+
+  const { data: openings } = await supabase
+    .from("opening")
+    .select("id, title, work_location")
+    .eq("posting_id", postingId)
+    .neq("id", application.opening_id)
+    .order("created_at", { ascending: true });
+
+  if (!openings || openings.length === 0) return [];
+
+  const { data: existing } = await supabase
+    .from("application")
+    .select("opening_id")
+    .eq("candidate_id", application.candidate_id)
+    .in(
+      "opening_id",
+      openings.map((o) => o.id),
+    );
+
+  const taken = new Set((existing ?? []).map((a) => a.opening_id));
+
+  return openings.map((o) => ({
+    id: o.id,
+    title: o.title,
+    workLocation: o.work_location,
+    alreadyApplied: taken.has(o.id),
+  }));
 }
