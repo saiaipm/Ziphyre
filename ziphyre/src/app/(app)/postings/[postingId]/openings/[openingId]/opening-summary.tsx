@@ -8,7 +8,7 @@ import {
   type StageCounts,
 } from "@/components/pipeline/stage-funnel";
 import type { ApplicationListItem } from "@/lib/applications";
-import { STAGE_TEXT } from "@/lib/stages";
+import { STAGE_ORDER, STAGE_TEXT, type StageKey } from "@/lib/stages";
 import { DEFAULT_FILTERS, type Filters } from "@/lib/pipeline-filtering";
 
 /**
@@ -97,7 +97,22 @@ export function OpeningSummary({
         />
       </div>
 
-      <StageFunnel byStage={byStage} total={total} />
+      {/* The funnel filters too, on the same toggle rule as the tiles
+          above: clicking the stage you are already on clears it. A
+          stage nobody is at is disabled — "0 Rejected" is an answer,
+          not a link to an empty list. */}
+      <StageFunnel
+        byStage={byStage}
+        total={total}
+        activeStage={
+          STAGE_ORDER.includes(filters.stage as StageKey)
+            ? (filters.stage as StageKey)
+            : null
+        }
+        onStageClick={(stage) =>
+          apply({ stage }, filters.stage === stage)()
+        }
+      />
       <NeedsReviewCallout count={needsReview} />
     </section>
   );

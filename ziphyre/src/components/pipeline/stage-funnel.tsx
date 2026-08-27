@@ -29,9 +29,19 @@ export const EMPTY_STAGE_COUNTS: StageCounts = {
 export function StageFunnel({
   byStage,
   total,
+  onStageClick,
+  activeStage,
 }: {
   byStage: StageCounts;
   total: number;
+  /**
+   * Only the opening page passes this — it is the one place with a
+   * pipeline underneath to filter. Home and the posting page render
+   * the same numbers as plain text rather than as controls that would
+   * promise something they cannot do.
+   */
+  onStageClick?: (stage: StageKey) => void;
+  activeStage?: StageKey | null;
 }) {
   return (
     <div className="rounded-lg border border-border bg-card px-5 py-4">
@@ -43,26 +53,58 @@ export function StageFunnel({
       </div>
 
       <ul className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-5">
-        {STAGE_ORDER.map((stage) => (
-          <li key={stage} className="flex items-baseline gap-2">
-            <span
-              className={cn(
-                "text-lg font-semibold tabular-nums",
-                // A zero stays grey whatever the stage. Painting "0
-                // Rejected" red would draw the eye to the one number on
-                // the row that says nothing happened.
-                byStage[stage] === 0
-                  ? "text-muted-foreground"
-                  : STAGE_TEXT[stage],
+        {STAGE_ORDER.map((stage) => {
+          const count = byStage[stage];
+          const content = (
+            <>
+              <span
+                className={cn(
+                  "text-lg font-semibold tabular-nums",
+                  // A zero stays grey whatever the stage. Painting "0
+                  // Rejected" red would draw the eye to the one number
+                  // on the row that says nothing happened.
+                  count === 0 ? "text-muted-foreground" : STAGE_TEXT[stage],
+                )}
+              >
+                {count}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {STAGE_LABELS[stage]}
+              </span>
+            </>
+          );
+
+          return (
+            <li key={stage}>
+              {onStageClick ? (
+                <button
+                  type="button"
+                  onClick={() => onStageClick(stage)}
+                  aria-pressed={activeStage === stage}
+                  disabled={count === 0}
+                  className={cn(
+                    "-mx-2 flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left transition-colors",
+                    activeStage === stage
+                      ? "bg-muted ring-1 ring-foreground/20"
+                      : "enabled:hover:bg-muted/60",
+                    count === 0 && "cursor-default",
+                  )}
+                >
+                  {content}
+                  <span className="sr-only">
+                    {count === 0
+                      ? " — nobody at this stage"
+                      : activeStage === stage
+                        ? " — filtering by this; activate to clear"
+                        : " — activate to filter the list below"}
+                  </span>
+                </button>
+              ) : (
+                <div className="flex items-baseline gap-2">{content}</div>
               )}
-            >
-              {byStage[stage]}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {STAGE_LABELS[stage]}
-            </span>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
