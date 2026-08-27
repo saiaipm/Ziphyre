@@ -15,6 +15,7 @@ file is deliberately just the moving parts.
 | `TechDecisions.md` | Stack truth and the *why* behind it. Stands in for `CodeContext.md` until there's enough code to write that properly |
 | `ProductNotes/PN-001-…md` | The original feature ask |
 | `ProductNotes/PN-002-…md` | Why Google intake was replaced by a hosted apply page |
+| `ProductNotes/PN-003-…md` | Why the screening prompt is visible but not editable |
 | `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-105 (Draft 8; FR-1–4, 19–29, 36, 62–65 retired) |
 | `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 7) |
 | `Testing/README.md` | Why the baseline file is gitignored, and what it's for |
