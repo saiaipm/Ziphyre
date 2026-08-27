@@ -48,6 +48,7 @@ export function OpeningSummary({
         <SummaryTile
           label="Still in play"
           value={total - byStage.rejected - byStage.on_hold}
+          outOf={total}
         />
         <SummaryTile
           label="Needs review"
