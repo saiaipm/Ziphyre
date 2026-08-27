@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { PostingActions } from "./posting-actions";
 import { PostingTitle } from "./posting-title";
 import { ApplyLink } from "./apply-link";
+import { RetentionNotice } from "./retention-notice";
 
 export async function generateMetadata({
   params,
@@ -56,6 +57,12 @@ export default async function PostingDetailPage({
           isClosed={isClosed}
         />
       </div>
+
+      <RetentionNotice
+        purgeAfter={posting.purgeAfter}
+        daysLeft={posting.daysUntilPurge}
+        applicationCount={metrics.totalApplications}
+      />
 
       {/* The posting-level dashboard: the same tiles and funnel as home
           and as each opening, scoped to this posting. A posting with
@@ -112,7 +119,7 @@ export default async function PostingDetailPage({
             <Link
               key={o.id}
               href={`/postings/${posting.id}/openings/${o.id}`}
-              className="elev-hover flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4 hover:bg-muted/40"
+              className="elev-hover flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border bg-card px-5 py-4 hover:bg-muted/40"
             >
               <div className="min-w-0">
                 <p className="text-sm font-medium">{o.title}</p>
@@ -120,7 +127,7 @@ export default async function PostingDetailPage({
                   {o.workLocation} · Created {formatDay(o.createdAt)}
                 </p>
               </div>
-              <div className="flex items-center gap-4 shrink-0">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 {/* Where the posting's candidates actually are. Without
                     this the summary above is a number with nowhere to
                     go — you could see 8 applications and still have to

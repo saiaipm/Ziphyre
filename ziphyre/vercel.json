@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/jobs",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/purge?commit=1",
+      "schedule": "0 3 * * *"
     }
   ]
 }
