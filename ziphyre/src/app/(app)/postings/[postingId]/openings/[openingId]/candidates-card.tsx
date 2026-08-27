@@ -850,9 +850,9 @@ function Score({ label, value }: { label: string; value: number }) {
  * The uploaded file's own name, alongside the candidate's.
  *
  * These are often the same string: a manual upload defaults the
- * candidate's name to the filename, so a CV added as
- * `A Candidate.pdf` produces a candidate called "a CA-qualified candidate"
- * until someone edits it. They diverge for anyone who applied through
+ * candidate's name to the filename, so a CV added as `A Candidate.pdf`
+ * produces a candidate called "A Candidate" until someone edits it —
+ * which nothing yet allows. They diverge for anyone who applied through
  * the apply page, where the candidate typed their own name and the file
  * is whatever they happened to attach — and that divergence is exactly
  * what makes the column worth showing: it is how you notice a CV that

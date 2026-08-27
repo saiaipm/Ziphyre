@@ -117,8 +117,8 @@ the real CA pipeline, not just typechecked:
 - **Moving back works and the history keeps the reversal.** Un-rejected a
   candidate; the score stayed 3.8, and the rejection with its disposition
   and note is still on record.
-- **Reassignment** (FR-60). Moved a CA-qualified candidate from the CA opening to a
-  new Accounts Executive opening with a rescreen. **The rescreen used the
+- **Reassignment** (FR-60). Moved one CA-qualified candidate from the CA
+  opening to a new Accounts Executive opening with a rescreen. **The rescreen used the
   new opening's JD** — verified through `jd_version_id`, not assumed — and
   scored 9.4 against 6.8 for the CA role, which is the right direction for
   a CA-qualified candidate applying where CA isn't required.
@@ -139,9 +139,9 @@ Skills" on every row, and it carries two more things:
 - **A CV file column beside the candidate's name.** These read as
   duplicates for manual uploads, because manual upload seeds the candidate
   name from the filename. They diverge for anyone who applied through the
-  apply page — the demo's one form application is named "Sai Phani" and
-  attached `another candidate's CV file`, which is the case
-  the column exists to make visible.
+  apply page — the demo's one form application is named "Sai Phani" but
+  attached a CV file saved under a different candidate's name entirely,
+  which is the case the column exists to make visible.
 - **Date received filter with exact dates** (FR-66), over
   `application.submitted_at` rather than `created_at`. **No backfill was
   needed** — `submitted_at` was already populated on every application,
@@ -212,9 +212,9 @@ Accountant qualification** and **Tally** marked must-have (matching the
 baseline's "treat CA as a hard gate" scenario). Compared to
 `Testing/baseline-ranking-CA-role.md`:
 
-- **Good:** ranks the top-ranked candidate first, and correctly separates her
-  and the second qualified CA (the two qualified CAs) from the other five — the two
-  questions the baseline document itself says matter most.
+- **Good:** ranks the strongest candidate first, and correctly separates
+  the two qualified CAs from the other five — the two questions the
+  baseline document itself says matter most.
 - **Real problem found, partly fixed:** the must-have verdicts hallucinated
   twice on the first pass — one candidate with no CA credential was marked
   as meeting it, and a different candidate was credited with Tally
@@ -330,9 +330,9 @@ model deciding what matters, which the design refuses. If marking them proves
 tedious the fix is UI (group or bulk-dismiss soft skills), never a cleverer
 prompt.
 
-**8. Tally hallucination — accepted, not fixed.** Screening credits Manu
-the top-ranked candidate with Tally experience her CV never mentions, surviving two
-prompt revisions. Decided 22 Aug 2026: accept as a known model limitation;
+**8. Tally hallucination — accepted, not fixed.** Screening credits the
+top-ranked candidate with Tally experience their CV never mentions,
+surviving two prompt revisions. Decided 22 Aug 2026: accept as a known model limitation;
 revisit only if the pattern repeats. See `TechDecisions.md` §7.
 
 **9. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
