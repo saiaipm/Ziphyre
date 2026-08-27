@@ -12,7 +12,19 @@ import { runWithFallback } from "@/lib/ai/run-with-fallback";
 import type { ProviderId } from "@/lib/ai/providers";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { runQueuedJobs } from "@/lib/jobs/runner";
-import { getApplicationsForOpening, type ApplicationListItem } from "@/lib/applications";
+import {
+  getApplicationsForOpening,
+  getReassignTargets,
+  getStageHistory,
+  type ApplicationListItem,
+  type ReassignTarget,
+  type StageEvent,
+} from "@/lib/applications";
+import {
+  stageTakesDisposition,
+  type DispositionKey,
+  type StageKey,
+} from "@/lib/stages";
 import { extractDocumentText } from "@/lib/cv/extract-text";
 
 const ALLOWED_CV_MIME = new Set([
@@ -767,4 +779,182 @@ export async function getCvViewUrl(
       filename: application.cv_original_filename ?? "cv.pdf",
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Stage transitions — FR-56 to FR-60
+// ---------------------------------------------------------------------------
+
+/**
+ * FR-56, FR-57, FR-59. One action for one candidate and for fifty —
+ * the functional spec's §"Single vs many" rule is that they behave
+ * identically, so there is deliberately no separate single-move path.
+ *
+ * **One RPC call per application, never a batch statement.** Tech spec
+ * §9: FR-59 requires every change individually attributable, and each
+ * call is its own locked transaction over one application. A batch of
+ * twenty is twenty decisions about twenty people.
+ *
+ * Partial success is reported, not swallowed. If three of twenty fail,
+ * the seventeen that moved have moved, and saying "done" would be a
+ * lie the admin only discovers when the funnel doesn't add up.
+ */
+export async function changeApplicationStage(input: {
+  applicationIds: string[];
+  toStage: StageKey;
+  disposition?: DispositionKey | null;
+  note?: string | null;
+  /** For revalidation; the pipeline is addressed by both ids. */
+  postingId: string;
+  openingId: string;
+}): Promise<ActionResult<{ moved: number; failed: number }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  if (input.applicationIds.length === 0) {
+    return { ok: false, error: "Nothing selected." };
+  }
+
+  // FR-57 confines disposition to On hold and Rejected. The database
+  // constrains this too; dropping it here keeps the two agreeing rather
+  // than letting the UI send something the constraint will reject.
+  const disposition = stageTakesDisposition(input.toStage)
+    ? (input.disposition ?? null)
+    : null;
+
+  const supabase = await createClient();
+
+  let moved = 0;
+  let failed = 0;
+  for (const applicationId of input.applicationIds) {
+    const { error } = await supabase.rpc("record_stage_change", {
+      p_application_id: applicationId,
+      p_to_stage: input.toStage,
+      p_actor_id: session.userId,
+      p_disposition: disposition,
+      p_note: input.note ?? null,
+    });
+    if (error) failed += 1;
+    else moved += 1;
+  }
+
+  revalidatePath(`/postings/${input.postingId}/openings/${input.openingId}`);
+  revalidatePath("/");
+
+  if (moved === 0) {
+    return {
+      ok: false,
+      error:
+        failed === 1
+          ? "Couldn't move that candidate. Please try again."
+          : `Couldn't move any of the ${failed} selected candidates. Please try again.`,
+    };
+  }
+
+  return { ok: true, data: { moved, failed } };
+}
+
+/** FR-59. Read on demand — history is opened, not listed. */
+export async function loadStageHistory(
+  applicationId: string,
+): Promise<ActionResult<StageEvent[]>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  try {
+    return { ok: true, data: await getStageHistory(applicationId) };
+  } catch {
+    return { ok: false, error: "Couldn't load this candidate's history." };
+  }
+}
+
+/** FR-60. The other openings on this posting, collisions marked. */
+export async function loadReassignTargets(
+  applicationId: string,
+): Promise<ActionResult<ReassignTarget[]>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  try {
+    return { ok: true, data: await getReassignTargets(applicationId) };
+  } catch {
+    return { ok: false, error: "Couldn't load the other openings." };
+  }
+}
+
+/**
+ * FR-60. Moves an application to another opening on the same posting,
+ * and offers a rescreen against that opening's job description.
+ *
+ * The rescreen needs no new payload: `screen_application` resolves the
+ * opening from the application when it runs, so a job queued after the
+ * move already reads the new JD and the new requirement list.
+ *
+ * Declining the rescreen is allowed and leaves the old score in place —
+ * which is why the assessment dialog says which job description a score
+ * was produced against. A score silently attributed to a role it was
+ * never computed for is the failure worth avoiding here.
+ */
+export async function reassignApplication(input: {
+  applicationId: string;
+  targetOpeningId: string;
+  rescreen: boolean;
+  postingId: string;
+  fromOpeningId: string;
+}): Promise<ActionResult<{ openingTitle: string; rescreening: boolean }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data: openingTitle, error } = await supabase.rpc(
+    "reassign_application",
+    {
+      p_application_id: input.applicationId,
+      p_target_opening_id: input.targetOpeningId,
+      p_actor_id: session.userId,
+    },
+  );
+
+  if (error) {
+    return { ok: false, error: describeReassignFailure(error.message) };
+  }
+
+  let rescreening = false;
+  if (input.rescreen) {
+    await supabase
+      .from("application")
+      .update({ screening_status: "pending", screening_failure_reason: null })
+      .eq("id", input.applicationId);
+
+    await enqueueJob(session.organization.id, "screen_application", {
+      applicationId: input.applicationId,
+      reason: "reassigned",
+    });
+    pumpJobsAfterResponse();
+    rescreening = true;
+  }
+
+  revalidatePath(`/postings/${input.postingId}/openings/${input.fromOpeningId}`);
+  revalidatePath(`/postings/${input.postingId}/openings/${input.targetOpeningId}`);
+  revalidatePath("/");
+
+  return { ok: true, data: { openingTitle: openingTitle as string, rescreening } };
+}
+
+/**
+ * Turns the sentinels `reassign_application` raises into the sentences
+ * the spec's §9 asks for. Postgres wraps the message, so this matches
+ * rather than compares.
+ */
+function describeReassignFailure(message: string): string {
+  if (message.includes("ZIPHYRE_ALREADY_APPLIED")) {
+    return "This candidate already has an application on that opening. Ziphyre keeps one application per candidate per opening, so there is nothing to move them into.";
+  }
+  if (message.includes("ZIPHYRE_DIFFERENT_POSTING")) {
+    return "That opening belongs to a different posting. Candidates can only be moved between openings on the posting they applied to.";
+  }
+  if (message.includes("ZIPHYRE_SAME_OPENING")) {
+    return "This candidate is already on that opening.";
+  }
+  return "Couldn't move this candidate. Please try again.";
 }

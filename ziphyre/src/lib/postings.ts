@@ -1,5 +1,10 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import {
+  EMPTY_STAGE_COUNTS,
+  type StageCounts,
+} from "@/components/pipeline/stage-funnel";
+import type { StageKey } from "@/lib/stages";
 
 export type PostingSummary = {
   id: string;
@@ -71,6 +76,18 @@ export async function getPostingsForOrg(): Promise<PostingSummary[]> {
 export type PostingDetail = PostingSummary & {
   closedAt: string | null;
   applyToken: string;
+  /**
+   * The posting-wide roll-up shown above its openings — the same shape
+   * the home and opening summaries use, so all three render through one
+   * funnel component. Per-opening counts ride along on each opening so
+   * the list can show where the candidates actually are.
+   */
+  metrics: {
+    totalApplications: number;
+    byStage: StageCounts;
+    needsReview: number;
+    perOpening: Map<string, { total: number; shortlisted: number }>;
+  };
 };
 
 export async function getPostingDetail(
@@ -103,6 +120,40 @@ export async function getPostingDetail(
     }
   }
 
+  // One query for every application on the posting, counted in memory.
+  // §15 puts the ceiling at several hundred per opening, so this stays
+  // cheaper than five aggregate round trips — and counting here rather
+  // than in SQL keeps the funnel's arithmetic (FR-102) in one place.
+  const metrics = {
+    totalApplications: 0,
+    byStage: { ...EMPTY_STAGE_COUNTS },
+    needsReview: 0,
+    perOpening: new Map<string, { total: number; shortlisted: number }>(),
+  };
+
+  if (openingIds.length > 0) {
+    const { data: applications } = await supabase
+      .from("application")
+      .select("opening_id, current_stage, screening_status")
+      .in("opening_id", openingIds);
+
+    for (const a of applications ?? []) {
+      const stage = a.current_stage as StageKey;
+      if (!(stage in metrics.byStage)) continue;
+      metrics.byStage[stage] += 1;
+      metrics.totalApplications += 1;
+      if (a.screening_status === "needs_manual_review") metrics.needsReview += 1;
+
+      const entry = metrics.perOpening.get(a.opening_id) ?? {
+        total: 0,
+        shortlisted: 0,
+      };
+      entry.total += 1;
+      if (stage === "shortlisted") entry.shortlisted += 1;
+      metrics.perOpening.set(a.opening_id, entry);
+    }
+  }
+
   return {
     id: posting.id,
     name: posting.name,
@@ -110,6 +161,7 @@ export async function getPostingDetail(
     createdAt: posting.created_at,
     closedAt: posting.closed_at,
     applyToken: posting.apply_token,
+    metrics,
     openings: posting.opening.map((o) => ({
       id: o.id,
       title: o.title,

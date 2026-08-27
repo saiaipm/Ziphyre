@@ -150,7 +150,7 @@ export function ScreeningForm({
                   <p className="text-sm font-medium">
                     {modelLabel(c.provider, c.model)}
                     {i === 0 && (
-                      <span className="ml-2 rounded-full bg-fit-shortlisted-bg px-2 py-0.5 text-[11px] font-medium text-fit-shortlisted">
+                      <span className="ml-2 rounded-full bg-fit-accent-bg px-2 py-0.5 text-[11px] font-medium text-fit-accent">
                         Primary
                       </span>
                     )}

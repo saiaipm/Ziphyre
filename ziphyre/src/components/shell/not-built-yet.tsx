@@ -24,7 +24,7 @@ export function NotBuiltYet({
       <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
         {summary}
       </p>
-      <p className="mt-4 inline-block rounded-full bg-fit-shortlisted-bg px-3 py-1 text-xs font-medium text-fit-shortlisted">
+      <p className="mt-4 inline-block rounded-full bg-fit-accent-bg px-3 py-1 text-xs font-medium text-fit-accent">
         Planned for {milestone}
       </p>
       <div className="mt-7">

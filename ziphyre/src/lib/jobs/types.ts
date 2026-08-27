@@ -2,7 +2,8 @@ export type JobKind = "screen_application";
 
 export type ScreenApplicationPayload = {
   applicationId: string;
-  reason: "new" | "retry" | "rescreen";
+  /** `reassigned` is FR-60's rescreen against the new opening's JD. */
+  reason: "new" | "retry" | "rescreen" | "reassigned";
 };
 
 export type JobPayload<K extends JobKind> = K extends "screen_application"

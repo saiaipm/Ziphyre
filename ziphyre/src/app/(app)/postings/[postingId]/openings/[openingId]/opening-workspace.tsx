@@ -54,6 +54,7 @@ type Props = {
 
 export function OpeningWorkspace({
   openingId,
+  postingId,
   title,
   workLocation,
   jdContent,
@@ -92,6 +93,7 @@ export function OpeningWorkspace({
         <TabsContent value="pipeline" className="space-y-6">
           <CandidatesCard
             openingId={openingId}
+            postingId={postingId}
             initialApplications={initialApplications}
           />
         </TabsContent>
@@ -598,7 +600,7 @@ function RequirementRow({
               "rounded px-2.5 py-1 text-xs font-medium transition-colors",
               item.kind === kind
                 ? kind === "must_have"
-                  ? "bg-fit-shortlisted-bg text-fit-shortlisted"
+                  ? "bg-fit-accent-bg text-fit-accent"
                   : "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
