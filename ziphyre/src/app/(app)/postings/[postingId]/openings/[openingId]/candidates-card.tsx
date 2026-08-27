@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { modelLabel } from "@/lib/ai/providers";
 import { PipelineFilters } from "./pipeline-filters";
+import { ExportDialog } from "./export-dialog";
 import {
   applyFilters,
   DEFAULT_FILTERS,
@@ -276,12 +277,22 @@ export function CandidatesCard({
       <OpeningSummary applications={applications} />
 
     <section className="rounded-lg border border-border bg-card">
-      <div className="border-b border-divider px-6 py-4">
-        <h2 className="text-sm font-semibold">Candidates</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Add candidates by uploading their CVs. Screening starts on its own
-          &mdash; there&rsquo;s no button for it.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-divider px-6 py-4">
+        <div>
+          <h2 className="text-sm font-semibold">Candidates</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Add candidates by uploading their CVs. Screening starts on its own
+            &mdash; there&rsquo;s no button for it.
+          </p>
+        </div>
+        {/* FR-74: what leaves is what is on screen. `visible` is
+            already filtered and sorted, so the export inherits both
+            without being told about either. */}
+        <ExportDialog
+          openingId={openingId}
+          visible={visible}
+          selectedIds={selectedVisible}
+        />
       </div>
 
       <div className="space-y-4 px-6 py-5">
