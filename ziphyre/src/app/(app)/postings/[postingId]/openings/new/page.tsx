@@ -15,7 +15,7 @@ export default async function NewOpeningPage({
   if (!posting) notFound();
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-8">
       <div>
         <h1 className="text-[28px] leading-tight font-semibold">
           New opening

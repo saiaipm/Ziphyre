@@ -5,7 +5,7 @@ export const metadata: Metadata = { title: "New posting" };
 
 export default function NewPostingPage() {
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-8">
       <div>
         <h1 className="text-[28px] leading-tight font-semibold">
           New posting

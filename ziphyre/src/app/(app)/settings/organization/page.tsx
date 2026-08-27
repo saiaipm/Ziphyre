@@ -12,7 +12,7 @@ export default async function OrganizationSettingsPage() {
   const org = session.organization;
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <div className="mx-auto max-w-3xl space-y-8">
       <div>
         <h1 className="text-[28px] leading-tight font-semibold">Organization</h1>
         <p className="mt-1 text-sm text-muted-foreground">

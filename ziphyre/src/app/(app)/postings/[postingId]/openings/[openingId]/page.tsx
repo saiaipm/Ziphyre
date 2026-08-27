@@ -30,7 +30,7 @@ export default async function OpeningDetailPage({
   const applications = await getApplicationsForOpening(openingId);
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <Link
         href={`/postings/${postingId}`}
         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
