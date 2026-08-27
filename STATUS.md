@@ -1,6 +1,6 @@
 # Ziphyre — Current State
 
-**Updated:** 26 August 2026
+**Updated:** 27 August 2026
 **Purpose:** Session handoff. Where the build actually is, what's next, and
 what's outstanding. Everything durable lives in the documents below — this
 file is deliberately just the moving parts.
@@ -15,13 +15,24 @@ file is deliberately just the moving parts.
 | `TechDecisions.md` | Stack truth and the *why* behind it. Stands in for `CodeContext.md` until there's enough code to write that properly |
 | `ProductNotes/PN-001-…md` | The original feature ask |
 | `ProductNotes/PN-002-…md` | Why Google intake was replaced by a hosted apply page |
-| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-100 (Draft 6; FR-1–4, 19–29, 36, 62–65 retired) |
-| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones |
+| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-105 (Draft 7; FR-1–4, 19–29, 36, 62–65 retired) |
+| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 5) |
 | `Testing/README.md` | Why the baseline file is gitignored, and what it's for |
 
 **Read `ziphyre/AGENTS.md` before writing code.** This Next.js version has
 breaking changes from training data; check `node_modules/next/dist/docs/`
-rather than assuming. Two real bugs this session came from ignoring that.
+rather than assuming. Several real bugs have come from ignoring it.
+
+**Two lint rules this codebase will hold you to**, both of which caught real
+bugs rather than style nits:
+- `react-hooks/set-state-in-effect` — no `setState` synchronously in an
+  effect. For browser-only values (localStorage, `window.location`) use
+  `useSyncExternalStore` with an explicit **server snapshot**; that is also
+  what keeps hydration honest. See `sidebar.tsx` and `apply-link.tsx`.
+- Reading `typeof window` during render causes a hydration mismatch. It has
+  happened once already and the fresh dev-server log is what surfaced it —
+  **stale Turbopack console errors will mask it**, so trust `preview_logs`
+  over the browser console after a restart.
 
 ---
 
@@ -72,18 +83,31 @@ candidate applied through `/apply/[token]` with **no Google account on
 either side**, saw confirmation immediately, and was screened 8.8/10
 automatically.
 
-**Next: M4 — Pipeline.** Stages, batch actions, disposition, CV viewer,
-reassignment.
+**M4 — UI shell done, the actions themselves are not.** Shipped 27 Aug 2026:
 
-**~~Design note for M4~~ — done, 27 Aug 2026.** The opening page no longer
-stacks setup and candidates on one scroll: it is now **Pipeline | Setup**
-tabs. Pipeline leads whenever anyone has applied, which is also what FR-78
-requires of a link from Home; Setup leads only while the opening is still
-empty, when there is genuinely nothing else to show.
+- **Home dashboard** (FR-101 – FR-105): active postings and openings, total
+  applications, the five-stage funnel that sums exactly to that total, and a
+  separate needs-review callout. Scoped to active postings.
+- **Opening page split into Pipeline | Setup tabs.** Pipeline leads once
+  anyone has applied — which is also what FR-78 requires of a link from
+  Home; Setup leads only while the opening is empty.
+- **CV readable beside its assessment** (FR-61), via a 5-minute signed URL
+  fetched when the dialog opens.
+- **Filters and sorting** (FR-66/67/69/70) over score, each component,
+  must-have result, screening status and date, with clearable chips.
+- **JD upload** (FR-7 — PDF/DOCX/MD/TXT) and JD export.
+- Collapsible sidebar; page content centred; a way out of a half-filled
+  create form.
 
-Home also gained the organisation-wide summary (FR-101 – FR-105): active
-postings and openings, total applications, the five-stage funnel that sums
-to that total, and a separate needs-review callout.
+**Next: M4 proper — the stage transitions.** Moving a candidate to
+Shortlisted, On hold or Rejected; batch actions (FR-56); disposition
+(FR-57/58); stage history (FR-59); reassignment between openings (FR-60).
+
+**Why this matters more than it sounds:** nothing can currently change an
+application's stage except screening's own `new → screened`. So the Home
+funnel will read all-Screened forever, and the Shortlisted tile will sit at
+zero, until these land. The dashboard is built; the actions that move it are
+not.
 
 ---
 
@@ -114,16 +138,23 @@ baseline's "treat CA as a hard gate" scenario). Compared to
 
 ---
 
-## Verified state, 26 Aug 2026
+## Verified state, 27 Aug 2026
 
-**Git:** on `feature/native-application-form`, branched from `main`.
-M3.5 is committed here and not yet merged.
+**Git:** on `main`, in sync with `origin/main` at `bd190aa`. Everything
+described above is merged. No unmerged branches carry live work.
 
 **Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): 14 tables, RLS on all.
 `organization`, `app_user`, `membership`, `posting`, `opening`, `jd_version`,
 `requirement`, `provider_settings`, `candidate`, `application`, `screening`,
 `stage_event`, `job`, `apply_attempt` — plus a private `cvs` Storage bucket.
 `google_connection` and `unmatched_submission` were dropped by M3.5.
+
+**Local data** (the demo org): 1 open posting "Finance hiring, August,
+Demo" with one opening, Chartered Accountant / Hyderabad — 29 requirements,
+2 marked must-have (CA qualification, Tally), 8 applications all at stage
+`screened`. Seven are the real CA CVs by manual upload; one ("Sai Phani")
+came through the retired Google path and keeps `source = 'form'` for
+provenance.
 
 **Providers configured**, in fallback order:
 
@@ -137,82 +168,87 @@ M3.5 is committed here and not yet merged.
 
 ## Outstanding
 
-**1. Rotate three API keys — do this first.**
-Before I disabled Server Function argument logging, Next.js wrote every
-saved key to the dev terminal in plaintext: the OpenAI, NVIDIA and Google
-keys, plus a second NVIDIA key pasted inside a full code snippet. The
-logging is off now (`next.config.ts`), but those keys were exposed.
+Split so a fresh session can see at a glance what still needs a human.
 
-**2. ~~GPT-4o mini is not primary yet~~ — Done.**
-Confirmed in Supabase 22 Aug 2026: `openai/gpt-4o-mini` is priority 0,
-Gemini 3.5 Flash-Lite is priority 1. No further action.
+### Needs a decision or action
 
-**3. `middleware.ts` → `proxy.ts`.**
-This Next version deprecates the middleware convention and logs a warning on
-every boot. Codemod: `npx @next/codemod@canary middleware-to-proxy .`
-Not urgent, doesn't block M2.
+**1. Rotate three API keys.** Before Server Function argument logging was
+disabled, Next.js wrote every saved key to the dev terminal in plaintext —
+the OpenAI, NVIDIA and Google keys, plus a second NVIDIA key pasted inside a
+code snippet. Logging is off now (`next.config.ts`), but those keys were
+exposed. *The user said 27 Aug 2026 they would do this; confirm before
+assuming it is done.*
 
-**4. Twenty-nine requirements may be too many to mark by hand.**
-The CA JD genuinely contains all of them, and some are boilerplate nobody
-would gate on ("Communication skills"). Deliberately *not* filtered —
-that would mean the model deciding what matters, which the design refuses.
-If marking them proves tedious, the fix is UI (group or bulk-dismiss soft
-skills), never a cleverer prompt.
+**2. M4 proper — stage transitions.** The largest functional gap. Nothing can
+move an application off `screened`, so the Home funnel and the Shortlisted
+tile cannot change. Covers FR-56 (batch), FR-57/58 (disposition), FR-59
+(history), FR-60 (reassignment).
 
-**5. ~~FR-47 has no test fixture~~ — Resolved in M2.**
-A legacy `.doc` upload has no maintained pure-JS extractor, so it's routed
-straight to Needs manual review with its own reason. Verified in the
-browser with a synthetic `.doc` file. All seven real CA CVs are PDFs and
-parse cleanly, so a scanned/photographed PDF still hasn't been tried — lower
-priority now that the path itself is proven.
+**3. The rest of FR-66, and FR-68.** Filters over *form answers* — location,
+notice period, CTC, relocation, declared experience. These need the answers
+plumbed into `getApplicationsForOpening`, and they carry FR-68's obligation
+to count and reveal candidates excluded for having "Not provided" in a
+filtered field. The score/date/status filters that exist do not touch this.
 
-**6. ~~Branch not pushed~~ — was already pushed; this was stale.**
-`git branch -vv` shows `origin/feature/m1-postings-openings` tracked and in
-sync as of commit `8dfbe22`. M2's work (this session) is uncommitted — commit
-and push it when ready.
+**4. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
+middleware convention and warns on every boot:
+`npx @next/codemod@canary middleware-to-proxy .` **The migration must carry
+the public-path list forward** — `/apply`, `/api/apply` and `/api/cron`. Drop
+them and intake and cron both break in production while looking fine locally.
 
-**7. Tally-hallucination on the top-ranked candidate — accepted, not fixed.**
-Screening (`gpt-4o-mini`) credits her with Tally experience her CV never
-mentions, surviving two prompt revisions. Decided 22 Aug 2026: accept as a
-known model limitation for now; revisit only if this pattern repeats on
-future CVs. See "M2 test result" above and `TechDecisions.md` §7.
+**5. Twenty-nine requirements may be too many to mark by hand.** The CA JD
+genuinely contains all of them, and some are boilerplate nobody would gate on
+("Communication skills"). Deliberately *not* filtered — that would mean the
+model deciding what matters, which the design refuses. If marking them proves
+tedious the fix is UI (group or bulk-dismiss soft skills), never a cleverer
+prompt.
 
-**8. `next.config.ts` needs `serverExternalPackages` for pdf-parse.**
-Already fixed (`["pdf-parse", "pdfjs-dist"]`) — noted here because it's the
-kind of line a config cleanup could plausibly delete without knowing why.
-Removing it brings back "Setting up fake worker failed" on every PDF.
+**6. Tally hallucination — accepted, not fixed.** Screening credits Manu
+the top-ranked candidate with Tally experience her CV never mentions, surviving two
+prompt revisions. Decided 22 Aug 2026: accept as a known model limitation;
+revisit only if the pattern repeats. See `TechDecisions.md` §7.
 
-**9. Auth middleware now excludes `/api/cron`.**
-Already fixed — noted because a future middleware→proxy.ts migration (see
-#3 below) must carry this exclusion forward, or cron silently stops working
-in production while looking fine locally.
+**7. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
+`.doc` path, but no image-only PDF has been tried. Low priority now the path
+itself works.
 
-**10. ~~The Google OAuth app is in Testing mode~~ — no longer applies.**
-M3.5 removed every sensitive scope. Admin sign-in uses basic identity
-scopes only, which need no Google verification review and have no 7-day
-refresh-token expiry. **This was the single largest go-to-market blocker
-and it is gone.** Original note kept below for the record.
+### Deliberate deviations, recorded so they are not mistaken for oversights
 
-<details><summary>Original, 23 Aug 2026</summary>
+**Filtering runs client-side, not in the query.** Tech spec §9 specifies
+server-side. The whole list is already loaded and §15 puts the ceiling at
+"several hundred applications per opening", so an array filter is instant
+where a round trip per dropdown change would not be. Reasoning is in
+`pipeline-filters.tsx`. Revisit if that ceiling assumption stops holding.
 
-Hit on first connect, 23 Aug 2026: `Error 403: access_denied` — *"has not
-completed the Google verification process… can only be accessed by
-developer-approved testers."*
+**JD upload stores text, not the file.** Everything downstream — extraction,
+screening, versioning — works on text, and a stored binary would be a second
+thing to read, retain and purge. Export therefore returns the text screening
+ran against, not the original upload.
 
-- **Every Google account that connects must be on the test-user list.**
-  Cloud Console → OAuth consent screen → Audience → Test users. Sign-in had
-  worked for `saiphanimba09@gmail.com` before because that grant was already
-  consented; adding the Drive/Sheets/Forms scopes forces a fresh consent,
-  which re-checks the list.
-- **Refresh tokens expire after 7 days while in Testing.** The connection
-  will flip itself to `needs_reconnect` roughly weekly and the import job
-  will stop. That is Google's policy, *not* a bug in
-  `getAccessToken`/`invalid_grant` handling — don't go hunting for one.
-  Reconnecting fixes it each time.
+### Load-bearing lines a cleanup would plausibly delete
 
-Both go away only by publishing the app, which for these sensitive scopes
-requires Google's verification review. Fine to stay in Testing for the pilot;
-it must be resolved before real customers connect their own accounts.
+- **`serverExternalPackages: ["pdf-parse", "pdfjs-dist"]`** in
+  `next.config.ts`. Removing it brings back "Setting up fake worker failed"
+  on every PDF — a bundler failure that looks like a parsing bug.
+- **`/apply`, `/api/apply`, `/api/cron` in the middleware public-path list.**
+  Candidates have no session and cron carries no cookie; gating either makes
+  applying impossible and stops the job runner dead.
+- **`bodySizeLimit: "20mb"`** for Server Actions — bulk CV upload by the
+  admin exceeds the 1 MB default. (The public apply page does not rely on
+  this: it uploads direct to Storage.)
+
+<details><summary>Resolved — kept for the record</summary>
+
+- **GPT-4o mini not primary** — done 22 Aug; it is priority 0.
+- **FR-47 has no test fixture** — resolved in M2 via the legacy `.doc` path.
+- **Branch not pushed** — was stale; everything is on `main`.
+- **Google OAuth stuck in Testing mode** — no longer applies. M3.5 removed
+  every sensitive scope, so there is no verification review and no 7-day
+  refresh-token expiry. This had been the single largest go-to-market
+  blocker.
+- **Opening page mixed setup with the candidate list** — split into
+  Pipeline | Setup tabs, 27 Aug.
+
 </details>
 
 ---
@@ -256,13 +292,22 @@ something a fresh session would plausibly "fix" and thereby break.
   real email at upload time without revisiting FR-37 dedup, which assumes
   email is always real.
 
-- **`pdf-parse`/`pdfjs-dist` must stay in `serverExternalPackages`.**
-  Removing it from `next.config.ts` breaks PDF text extraction silently at
-  the bundler level, not the code level — see Outstanding #8.
+- **The apply page is the only public surface, and it must stay that way.**
+  One posting, one unguessable link. No public index of postings, no
+  browsable careers page, no candidate accounts — that line is what keeps
+  the hosted form from becoming the job board Non-Goal 3 refuses.
+  *(PN-002)*
 
-- **`/api/cron` must stay out of the auth middleware's gate.** It has no
-  user session to check; its own `CRON_SECRET` is the only guard. See
-  Outstanding #9.
+- **Candidate email is not verified, and that was a decision.** Refusing a
+  duplicate application (FR-95) handles the honest mistakes. Someone could
+  still apply under another person's address and block them; it fails
+  loudly, and OTP is the fix if it ever happens. Don't add a verification
+  step without reading PN-002 Decision 3 first. *(See also the
+  build-your-own-OTP analysis there: Supabase's built-in flow would mint an
+  `app_user` for every candidate.)*
+
+(The `serverExternalPackages` and middleware public-path notes moved up to
+Outstanding → "Load-bearing lines a cleanup would plausibly delete".)
 
 ---
 
@@ -274,10 +319,19 @@ something a fresh session would plausibly "fix" and thereby break.
 - `SETTINGS_ENCRYPTION_KEY` is infrastructure, not a credential — the
   AES-256-GCM key that encrypts those provider keys. Losing it makes every
   stored key permanently unreadable.
-- `GOOGLE_CLIENT_ID` is for sign-in and Forms/Sheets/Drive access. It is
-  **not** the Gemini API key. Gemini keys start `AIza`, from
-  aistudio.google.com.
+- `GOOGLE_CLIENT_ID` is for **admin sign-in only** now — basic identity
+  scopes, no Drive/Sheets/Forms. It is **not** the Gemini API key; Gemini
+  keys start `AIza`, from aistudio.google.com.
+- Candidates need no Google account and no account of any kind. The apply
+  page takes no sign-in.
 - Gitignored and must stay so: `CA Role Sample Resumes/`, `JDs/`,
   `Testing/baseline-ranking-CA-role.md`, `.env.local`, `.mcp.json`.
   The first three contain real candidates' personal data or the employer's
-  identity.
+  identity. Verified 23 Aug 2026 that no CV has ever been committed, in any
+  commit — re-check with
+  `git log --all --diff-filter=A --name-only | grep -i resume` before
+  publishing anything.
+
+**Running it:** `npm run dev` from `ziphyre/`. The apply page lives at
+`/apply/<posting.apply_token>` — get the link from the posting page, or
+`select apply_token from posting`.

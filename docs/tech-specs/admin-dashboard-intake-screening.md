@@ -2,7 +2,7 @@
 
 **Implements:** `docs/functional-specs/admin-dashboard-intake-screening.md` (Draft 6)
 **Built on:** `TechDecisions.md` (Draft 7), `ProductNotes/PN-002-native-application-form.md`
-**Status:** Draft 5 · 23 August 2026
+**Status:** Draft 6 · 27 August 2026
 
 Requirement references are **FR-n** from the functional spec. Where this document decides something the functional spec left open, it is marked **[new decision]**.
 
@@ -553,6 +553,15 @@ One hook per resource: `useApplications`, `useApplication`, `useOpening`, `useRe
 
 Server-side, composed into one query. Score and component ranges hit the denormalised pointer, not the history.
 
+**Amended 27 Aug 2026 — the first cut runs client-side.** The score,
+component, must-have, status and date filters (FR-66's screening half) plus
+sorting (FR-70) filter an array already loaded into the pipeline component,
+not a composed query. §15's assumption 7 puts the ceiling at several hundred
+applications per opening; at that size an in-memory filter is instant, where
+a round trip per dropdown change would not be. **The server-side design
+below still stands for the form-answer filters**, which are unbuilt and are
+the ones that actually need FR-68's exclusion counting.
+
 **FR-68 requires counting exclusions, not just applying them.** When a filter references a field, applications whose `form_answers` lack that key are excluded *and* counted separately, so the UI can offer "N candidates hidden because they have no notice period recorded" with a way to show them.
 
 ### Reassignment (FR-60)
@@ -711,6 +720,7 @@ Retired ranges are listed rather than removed. The numbers are never reused, so 
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 6 | 27 Aug 2026 | Records the M4 UI shell as built, and one deliberate deviation: the screening-side filters and sorting run client-side over the already-loaded list rather than as a composed query (§9), justified by §15's several-hundred ceiling. The form-answer filters and FR-68's exclusion counting remain unbuilt and keep the server-side design. Also notes what the shell does *not* include — nothing can yet move an application off `screened`, so the FR-101 funnel cannot change until the stage transitions land |
 | Draft 5 | 23 Aug 2026 | **Google intake replaced by a Ziphyre-hosted application page (PN-002, functional spec Draft 6).** §5 rewritten end to end: a public `/apply/[token]` surface, a two-step upload-then-submit flow where the CV never passes through the application server, and server-side verification of the uploaded object rather than trust in what the client claims. Schema: `posting.apply_token` and `candidate.email_verified` added; `google_connection`, `unmatched_submission`, `opening.form_option_value`, the six Google columns on `posting`, and `cv_drive_file_id` / `source_row_number` / `previous_cv_storage_path` / `resubmitted_at` on `application` all dropped. The `import_submissions` job kind and the fourth moving part in §1 go with them. Two consequences recorded rather than glossed: the public intake handlers join background jobs as the places where tenant isolation is hand-enforced rather than given by RLS, and retention becomes load-bearing now that Ziphyre holds the only copy of every CV |
 | Draft 4 | 22 Aug 2026 | `provider_settings.provider` constraint changed from `('claude','gemini','openai')` to `('openai','google','nvidia')`, matching the revised FR-81 list. Caught before any key was stored: the live CHECK constraint would have rejected all three new provider ids at save time. Rolled forward in migration `20260822140000` rather than editing the applied one |
 | Draft 3 | 21 Aug 2026 | Posting deletion confirmed as an actual product decision (**FR-84**, functional spec) rather than an unconfirmed assumption. Fixed a real schema gap this surfaced: `application.opening_id`, `screening.application_id`, `stage_event.application_id` and `unmatched_submission.posting_id` had no cascade — deleting a posting as specified would have failed on a foreign-key violation rather than actually deleting anything. All four now cascade |
