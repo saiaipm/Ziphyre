@@ -308,7 +308,9 @@ function Field({
     <div className="space-y-1.5">
       <Label>{label}</Label>
       {children}
-      {error && <p className="text-xs text-fit-rejected">{error}</p>}
+      {/* An error the candidate has to act on, in the colour errors use
+          — it was slate, which read as a hint rather than a problem. */}
+      {error && <p className="text-xs text-fit-weak">{error}</p>}
     </div>
   );
 }

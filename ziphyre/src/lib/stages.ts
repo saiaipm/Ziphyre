@@ -82,3 +82,28 @@ export const STAGE_ACTION_LABELS: Record<StageKey, string> = {
   on_hold: "Put on hold",
   rejected: "Reject",
 };
+
+/**
+ * One definition of what colour a stage is, so a badge in the pipeline
+ * and the same stage's count in a funnel can never disagree. Two forms
+ * of the same decision: text alone for numbers, filled for badges.
+ *
+ * `fit-rejected` (slate) is deliberately absent — it means a *closed
+ * posting* elsewhere in the product, which is an administrative state
+ * rather than anything about a person.
+ */
+export const STAGE_TEXT: Record<StageKey, string> = {
+  new: "text-muted-foreground",
+  screened: "text-fit-screened",
+  shortlisted: "text-fit-shortlisted",
+  on_hold: "text-fit-review",
+  rejected: "text-fit-weak",
+};
+
+export const STAGE_BADGE: Record<StageKey, string> = {
+  new: "bg-muted text-muted-foreground",
+  screened: "bg-fit-screened-bg text-fit-screened",
+  shortlisted: "bg-fit-shortlisted-bg text-fit-shortlisted",
+  on_hold: "bg-fit-review-bg text-fit-review",
+  rejected: "bg-fit-weak-bg text-fit-weak",
+};

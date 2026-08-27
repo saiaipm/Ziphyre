@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { fitBand, FIT_FILL, FIT_TEXT } from "@/lib/fit-tone";
+import { fitBand, passTone, FIT_FILL, FIT_TEXT } from "@/lib/fit-tone";
 import {
   Dialog,
   DialogContent,
@@ -606,11 +606,7 @@ function ApplicationRow({
           {mustHaveCount === 0 ? (
             <span className="text-muted-foreground">—</span>
           ) : (
-            <span
-              className={
-                s.meetsAllMustHaves ? "text-fit-strong" : "text-fit-review"
-              }
-            >
+            <span className={passTone(s.meetsAllMustHaves)}>
               {mustHaveMet}/{mustHaveCount}
             </span>
           )}
@@ -662,7 +658,7 @@ function ApplicationRow({
                 <ul className="mt-1 space-y-1">
                   {s.mustHaveResult.map((m) => (
                     <li key={m.requirementId} className="text-xs">
-                      <span className={m.met ? "text-fit-shortlisted" : "text-fit-review"}>
+                      <span className={passTone(m.met)}>
                         {m.met ? "✓" : "✗"}
                       </span>{" "}
                       {m.note}

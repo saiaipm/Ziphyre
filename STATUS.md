@@ -149,13 +149,19 @@ Skills" on every row, and it carries two more things:
   Sorting by date moved onto the same field, so "Newest first" and "Last
   7 days" cannot disagree about what newest means.
 
-**An opening-level summary** now sits above the pipeline, mirroring the
-home screen: Applications · Shortlisted · Still in play · Needs review,
-plus the five-stage funnel. It is **computed from the same array the table
-renders**, not fetched separately — so it updates the instant a stage
-changes, with no refetch, and the funnel cannot drift out of step with the
-list beneath it. FR-102 and FR-103 hold here as they do on home: the five
-stages sum to the total, and Needs review sits outside them.
+**Summaries at all three levels — organisation, posting, opening.** Same
+tiles, same five-stage funnel, rendered through **one shared component**
+(`components/pipeline/stage-funnel.tsx`) rather than three copies, because
+FR-102's promise is that these numbers reconcile and three hand-maintained
+versions is how "0 On hold" comes to mean different things on different
+screens. The posting page also lists applications and shortlisted counts
+per opening, so the posting total is traceable to where the candidates
+actually are (7 + 1 = 8 on the demo).
+
+The opening summary is **computed from the same array the table renders**,
+not fetched separately — so it updates the instant a stage changes, with
+no refetch. FR-102 and FR-103 hold at every level: the five stages sum to
+the total, and Needs review sits outside them.
 
 **Next: M5 — export (FR-71 – FR-75) and retention (§11).** With M4 done, a
 role can now be worked end to end inside Ziphyre; what it cannot yet do is
@@ -297,6 +303,19 @@ The tokens are `--fit-weak` (red) and `--fit-screened` (blue), added
 rather than repointed. `--fit-rejected` stays slate because it means a
 *closed posting* elsewhere — an administrative state, not a judgement
 about a person.
+
+**Colour now has exactly two sources**, after a first pass left four
+places disagreeing: `lib/fit-tone.ts` owns score bands and the pass/fail
+pair, `lib/stages.ts` owns stage colour as `STAGE_TEXT` / `STAGE_BADGE`.
+Anything that colours a score or a stage reads from those. Add a new
+coloured element by importing, never by writing a class name — that is
+what let a must-have failure render amber in the table, indigo in the
+dialog, and red nowhere.
+
+**Must-have results are pass/fail, never amber.** A missed must-have is
+the requirement the admin marked non-negotiable going unmet. Amber
+understates it, and amber sitting next to a red score reads as the
+*better* of the two, which inverts the meaning.
 
 **JD upload stores text, not the file.** Everything downstream — extraction,
 screening, versioning — works on text, and a stored binary would be a second

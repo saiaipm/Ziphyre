@@ -37,3 +37,15 @@ export const FIT_FILL: Record<FitBand, string> = {
   moderate: "bg-fit-review-bg text-fit-review",
   weak: "bg-fit-weak-bg text-fit-weak",
 };
+
+/**
+ * Must-have results are pass or fail, never middling — so they take the
+ * two ends of the scale and never amber. A missed must-have is the
+ * requirement the admin marked non-negotiable going unmet; showing that
+ * in the same amber as a mediocre score understates it, and amber next
+ * to a red score reads as the *better* of the two, which inverts the
+ * meaning.
+ */
+export function passTone(met: boolean): string {
+  return met ? "text-fit-strong" : "text-fit-weak";
+}

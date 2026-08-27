@@ -4,6 +4,11 @@ import Link from "next/link";
 import { Plus, ArrowRight, FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getPostingDetail } from "@/lib/postings";
+import {
+  NeedsReviewCallout,
+  StageFunnel,
+  SummaryTile,
+} from "@/components/pipeline/stage-funnel";
 import { PostingActions } from "./posting-actions";
 import { PostingTitle } from "./posting-title";
 import { ApplyLink } from "./apply-link";
@@ -29,6 +34,7 @@ export default async function PostingDetailPage({
 
   const isClosed = posting.status === "closed";
   const hasReadyOpening = posting.openings.some((o) => o.hasJd);
+  const { metrics } = posting;
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -46,6 +52,41 @@ export default async function PostingDetailPage({
         />
       </div>
 
+      {/* The posting-level dashboard: the same tiles and funnel as home
+          and as each opening, scoped to this posting. A posting with
+          several openings is the level at which "how is this hire
+          going?" is actually asked, and it was the one level that could
+          only be answered by opening each opening in turn. */}
+      {metrics.totalApplications > 0 && (
+        <section className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <SummaryTile label="Openings" value={posting.openings.length} />
+            <SummaryTile
+              label="Applications"
+              value={metrics.totalApplications}
+            />
+            <SummaryTile
+              label="Shortlisted"
+              value={metrics.byStage.shortlisted}
+              accent="text-fit-shortlisted"
+            />
+            <SummaryTile
+              label="Still in play"
+              value={
+                metrics.totalApplications -
+                metrics.byStage.rejected -
+                metrics.byStage.on_hold
+              }
+            />
+          </div>
+
+          <StageFunnel
+            byStage={metrics.byStage}
+            total={metrics.totalApplications}
+          />
+          <NeedsReviewCallout count={metrics.needsReview} />
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -74,6 +115,28 @@ export default async function PostingDetailPage({
                 </p>
               </div>
               <div className="flex items-center gap-4 shrink-0">
+                {/* Where the posting's candidates actually are. Without
+                    this the summary above is a number with nowhere to
+                    go — you could see 8 applications and still have to
+                    open each opening to find them. */}
+                {(() => {
+                  const c = metrics.perOpening.get(o.id);
+                  if (!c) return null;
+                  return (
+                    <span className="text-xs text-muted-foreground">
+                      {c.total} application{c.total === 1 ? "" : "s"}
+                      {c.shortlisted > 0 && (
+                        <>
+                          {" · "}
+                          <span className="font-medium text-fit-shortlisted">
+                            {c.shortlisted} shortlisted
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  );
+                })()}
+
                 {!o.hasJd ? (
                   <span className="flex items-center gap-1.5 text-xs text-fit-review">
                     <FileWarning className="size-3.5" aria-hidden />

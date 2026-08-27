@@ -27,6 +27,7 @@ import {
   DISPOSITIONS,
   DISPOSITION_LABELS,
   STAGE_ACTION_LABELS,
+  STAGE_BADGE,
   STAGE_LABELS,
   type DispositionKey,
   type StageKey,
@@ -42,29 +43,18 @@ import { loadReassignTargets, loadStageHistory, reassignApplication } from "../.
  * FR-53 shows stage on every row. Never colour alone (§Accessibility) —
  * the word is the information and the colour only reinforces it.
  *
- * Drawn from the same `fit-*` palette as the scores, so one row reads as
- * one scale rather than two colour systems arguing: blue for screened
- * and processed, indigo once shortlisted, amber while held, red once
- * rejected. No strikethrough on Rejected — the word already says it,
- * and striking a person's name through is louder than the decision.
- *
- * `fit-rejected` (slate) is deliberately not used here. It means a
- * *closed posting* elsewhere in the product, which is an administrative
- * state rather than a judgement about a person.
+ * The colours come from `STAGE_BADGE` in `@/lib/stages` rather than
+ * being written here, so this badge and the same stage's count in a
+ * funnel are the same decision made once. No strikethrough on Rejected —
+ * the word already says it, and striking a person's name through is
+ * louder than the decision.
  */
 export function StageBadge({ stage }: { stage: StageKey }) {
-  const tone: Record<StageKey, string> = {
-    new: "bg-muted text-muted-foreground",
-    screened: "bg-fit-screened-bg text-fit-screened",
-    shortlisted: "bg-fit-shortlisted-bg text-fit-shortlisted",
-    on_hold: "bg-fit-review-bg text-fit-review",
-    rejected: "bg-fit-weak-bg text-fit-weak",
-  };
   return (
     <span
       className={cn(
         "rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
-        tone[stage],
+        STAGE_BADGE[stage],
       )}
     >
       {STAGE_LABELS[stage]}
