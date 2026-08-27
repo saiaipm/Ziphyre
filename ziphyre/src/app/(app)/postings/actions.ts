@@ -13,6 +13,7 @@ import type { ProviderId } from "@/lib/ai/providers";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { runQueuedJobs } from "@/lib/jobs/runner";
 import { getApplicationsForOpening, type ApplicationListItem } from "@/lib/applications";
+import { extractDocumentText } from "@/lib/cv/extract-text";
 
 const ALLOWED_CV_MIME = new Set([
   "application/pdf",
@@ -649,4 +650,121 @@ export async function regenerateApplyLink(
 
   revalidatePath(`/postings/${postingId}`);
   return { ok: true, data: { applyToken } };
+}
+
+// ---------------------------------------------------------------------------
+// JD upload and CV viewing
+// ---------------------------------------------------------------------------
+
+const JD_MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  txt: "text/plain",
+};
+
+/**
+ * FR-7 — "uploaded as a document or pasted as text". The paste half has
+ * existed since M1; this is the half that was specified and never built.
+ *
+ * The document is parsed to text and stored as a normal JD version:
+ * we keep the words, not the file. Everything downstream — requirement
+ * extraction, screening, versioning — already works on text, and a
+ * stored binary would be a second thing to read, retain and purge.
+ */
+export async function uploadOpeningJd(
+  openingId: string,
+  formData: FormData,
+): Promise<ActionResult<{ characters: number }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Choose a file to upload." };
+  }
+
+  const ext = file.name.toLowerCase().split(".").pop() ?? "";
+  const mime = JD_MIME_BY_EXT[ext];
+  if (!mime) {
+    return {
+      ok: false,
+      error: "Upload a PDF, Word (.docx), Markdown (.md) or plain text file.",
+    };
+  }
+
+  let text: string | null;
+  try {
+    text = await extractDocumentText(Buffer.from(await file.arrayBuffer()), mime);
+  } catch (err) {
+    console.error("uploadOpeningJd: parse failed", err);
+    return { ok: false, error: "We couldn't read that file. It may be damaged." };
+  }
+
+  const content = (text ?? "").trim();
+  if (!content) {
+    return {
+      ok: false,
+      error:
+        "We couldn't find any text in that file — a scanned or image-only document can't be read.",
+    };
+  }
+
+  const result = await insertJdVersion(
+    openingId,
+    session.organization.id,
+    content,
+    "upload",
+  );
+  if (!result.ok) return result;
+
+  const supabase = await createClient();
+  const { data: opening } = await supabase
+    .from("opening")
+    .select("posting_id")
+    .eq("id", openingId)
+    .single();
+
+  revalidatePath(`/postings/${opening?.posting_id}/openings/${openingId}`);
+  return { ok: true, data: { characters: content.length } };
+}
+
+/**
+ * FR-61. A short-lived signed URL so the CV can be read beside its
+ * assessment. Generated per view and never stored — tech spec §12.
+ */
+export async function getCvViewUrl(
+  applicationId: string,
+): Promise<ActionResult<{ url: string; mime: string; filename: string }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data: application } = await supabase
+    .from("application")
+    .select("cv_storage_path, cv_mime, cv_original_filename")
+    .eq("id", applicationId)
+    .maybeSingle();
+
+  if (!application?.cv_storage_path) {
+    return { ok: false, error: "This application has no CV on file." };
+  }
+
+  const { data, error } = await supabase.storage
+    .from("cvs")
+    .createSignedUrl(application.cv_storage_path, 300);
+
+  if (error || !data) {
+    return { ok: false, error: "Couldn't open the CV. Please try again." };
+  }
+
+  return {
+    ok: true,
+    data: {
+      url: data.signedUrl,
+      mime: application.cv_mime ?? "application/pdf",
+      filename: application.cv_original_filename ?? "cv.pdf",
+    },
+  };
 }
