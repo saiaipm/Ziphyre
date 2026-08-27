@@ -77,6 +77,15 @@ export async function getPostingsForOrg(): Promise<PostingSummary[]> {
 
 export type PostingDetail = PostingSummary & {
   closedAt: string | null;
+  /** Tech spec §11: when this posting's candidate data is deleted. */
+  purgeAfter: string | null;
+  /**
+   * Days until that happens, computed here rather than in the component
+   * that shows it. `Date.now()` during render is impure — this codebase's
+   * lint rejects it, and rightly: the same render would produce a
+   * different number depending on when React happened to run it.
+   */
+  daysUntilPurge: number | null;
   applyToken: string;
   /**
    * The posting-wide roll-up shown above its openings — the same shape
@@ -99,7 +108,7 @@ export async function getPostingDetail(
   const { data: posting, error } = await supabase
     .from("posting")
     .select(
-      "id, name, status, closed_at, created_at, apply_token, opening (id, title, work_location, created_at, current_jd_version_id)",
+      "id, name, status, closed_at, purge_after, created_at, apply_token, opening (id, title, work_location, created_at, current_jd_version_id)",
     )
     .eq("id", postingId)
     .maybeSingle();
@@ -162,6 +171,12 @@ export async function getPostingDetail(
     status: posting.status as "open" | "closed",
     createdAt: posting.created_at,
     closedAt: posting.closed_at,
+    purgeAfter: posting.purge_after,
+    daysUntilPurge: posting.purge_after
+      ? Math.ceil(
+          (new Date(posting.purge_after).getTime() - Date.now()) / 86_400_000,
+        )
+      : null,
     applyToken: posting.apply_token,
     metrics,
     openings: posting.opening.map((o) => ({

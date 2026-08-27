@@ -197,11 +197,51 @@ content-types, the FR-75 marker carries the exporter's name and
 timestamp, and the zip contained the report, a marker text file and both
 CVs.
 
-**Next: M6 — overview & retention.** Home counts and mobile layout are
-largely done; **the purge job is the real work, and the riskiest thing
-left in the product.** Ziphyre holds the only copy of every CV it has
-received, and tech spec §11 says purge must be tested before it ever runs
-in production.
+**M6 (retention) — built and tested, on `m6-overview-retention`.**
+
+The apply page promises every candidate their details are kept six months
+after the role closes and are then deleted. `lib/retention/purge.ts` keeps
+that promise, on a daily cron at 03:00.
+
+**Dry run unless told otherwise.** `/api/cron/purge` reports what *would*
+go; only `?commit=1` deletes. That asymmetry is deliberate for the one
+operation here that cannot be undone — a copied URL or a misfired poke
+costs a JSON report rather than every CV Ziphyre holds. The cron entry
+carries the flag; nothing else does.
+
+**Tested against a real fixture before it could ever run for real**, which
+is what §11 demands. An expired posting with two applications, a real
+object in Storage, and a candidate deliberately holding a *live*
+application on another posting:
+
+- Dry run reported 2 applications / 2 CVs / 1 anonymised / 1 kept and
+  changed nothing — verified by re-reading every field.
+- Commit deleted the Storage object, nulled the CV paths, emptied
+  `form_answers`, blanked `strengths`/`gaps`/`overall_read`, and set
+  `purged_at`. **Scores, stage and dates survived** — §11's retained set,
+  confirmed field by field (overall 7.0, JD 8, Skills 6 still present).
+- **The candidate with a live application elsewhere was not anonymised.**
+  That guard is the whole reason the job reads across postings before
+  touching a candidate; without it, purging one posting would corrupt a
+  live one.
+- A second run reported zero — idempotent, so a retry after a partial
+  failure resumes rather than re-deleting.
+- The 30-day warning warns without purging and sets `purge_warned_at`
+  once.
+
+**Two real bugs the test caught**, neither visible to typecheck or lint:
+the purge selected `previous_cv_storage_path`, a column M3.5 dropped —
+and it discarded the resulting error, so it silently reported *0
+applications to purge* on a posting with two. A purge that quietly does
+nothing is the worst possible failure here, because it looks exactly like
+success. Both the column and the swallowed error are fixed, and every
+query in the job now surfaces its error.
+
+The posting page carries the promise too: a calm note beyond 30 days, an
+amber deadline inside it, naming what goes and what stays.
+
+**Next: the rest of M6 — FR-79's phone layout.** Home counts already read
+correctly; the mobile pass is what remains.
 
 ---
 

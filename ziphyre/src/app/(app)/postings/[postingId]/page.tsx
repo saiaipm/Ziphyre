@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { PostingActions } from "./posting-actions";
 import { PostingTitle } from "./posting-title";
 import { ApplyLink } from "./apply-link";
+import { RetentionNotice } from "./retention-notice";
 
 export async function generateMetadata({
   params,
@@ -56,6 +57,12 @@ export default async function PostingDetailPage({
           isClosed={isClosed}
         />
       </div>
+
+      <RetentionNotice
+        purgeAfter={posting.purgeAfter}
+        daysLeft={posting.daysUntilPurge}
+        applicationCount={metrics.totalApplications}
+      />
 
       {/* The posting-level dashboard: the same tiles and funnel as home
           and as each opening, scoped to this posting. A posting with
