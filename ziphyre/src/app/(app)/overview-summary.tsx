@@ -30,7 +30,7 @@ export function OverviewSummary({ metrics }: { metrics: OverviewMetrics }) {
       {totalApplications > 0 && (
         <div className="rounded-lg border border-border bg-card px-5 py-4">
           <div className="flex items-baseline justify-between gap-3">
-            <h2 className="label-meta">Where everyone stands</h2>
+            <h2 className="label-meta">Candidate status</h2>
             {/* FR-102, said out loud. If these ever disagree it is a bug,
                 and the reader should be able to see that for themselves. */}
             <span className="text-xs text-muted-foreground">
