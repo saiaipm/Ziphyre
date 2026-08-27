@@ -274,7 +274,17 @@ export function CandidatesCard({
       {/* Counted from `applications` — the same state the table renders
           — so a shortlist made below updates the tiles above it without
           a refetch, and the two can never disagree. */}
-      <OpeningSummary applications={applications} />
+      <OpeningSummary
+        applications={applications}
+        filters={filters}
+        onFilterChange={(next) => {
+          setFilters(next);
+          // A narrowed list is a different list; carrying a selection
+          // made against the old one into a batch action is how twenty
+          // invisible candidates get rejected at once.
+          setSelected(new Set());
+        }}
+      />
 
     <section className="rounded-lg border border-border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-divider px-6 py-4">

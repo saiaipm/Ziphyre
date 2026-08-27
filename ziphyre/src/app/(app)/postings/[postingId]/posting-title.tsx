@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatDay } from "@/lib/format-date";
 import { updatePostingName } from "../actions";
 
 export function PostingTitle({
@@ -12,11 +13,15 @@ export function PostingTitle({
   name,
   openingCount,
   isClosed,
+  createdAt,
+  closedAt,
 }: {
   postingId: string;
   name: string;
   openingCount: number;
   isClosed: boolean;
+  createdAt: string;
+  closedAt: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [nameVal, setNameVal] = useState(name);
@@ -82,6 +87,12 @@ export function PostingTitle({
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
         {openingCount} {openingCount === 1 ? "opening" : "openings"}
+        {" · "}
+        {/* When the hunt started — the first thing asked of a posting
+            that has been open a while, and the number every "how long
+            has this been running?" question is measured from. */}
+        Created {formatDay(createdAt)}
+        {isClosed && closedAt && <> · Closed {formatDay(closedAt)}</>}
       </p>
     </div>
   );

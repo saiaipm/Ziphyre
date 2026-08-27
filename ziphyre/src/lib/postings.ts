@@ -15,6 +15,7 @@ export type PostingSummary = {
     id: string;
     title: string;
     workLocation: string;
+    createdAt: string;
     requirementCount: number;
     mustHaveCount: number;
     hasJd: boolean;
@@ -33,7 +34,7 @@ export async function getPostingsForOrg(): Promise<PostingSummary[]> {
   const { data: postings, error } = await supabase
     .from("posting")
     .select(
-      "id, name, status, created_at, opening (id, title, work_location, current_jd_version_id)",
+      "id, name, status, created_at, opening (id, title, work_location, created_at, current_jd_version_id)",
     )
     .order("created_at", { ascending: false });
 
@@ -66,6 +67,7 @@ export async function getPostingsForOrg(): Promise<PostingSummary[]> {
       id: o.id,
       title: o.title,
       workLocation: o.work_location,
+      createdAt: o.created_at,
       requirementCount: counts.get(o.id)?.total ?? 0,
       mustHaveCount: counts.get(o.id)?.mustHave ?? 0,
       hasJd: Boolean(o.current_jd_version_id),
@@ -97,7 +99,7 @@ export async function getPostingDetail(
   const { data: posting, error } = await supabase
     .from("posting")
     .select(
-      "id, name, status, closed_at, created_at, apply_token, opening (id, title, work_location, current_jd_version_id)",
+      "id, name, status, closed_at, created_at, apply_token, opening (id, title, work_location, created_at, current_jd_version_id)",
     )
     .eq("id", postingId)
     .maybeSingle();
@@ -166,6 +168,7 @@ export async function getPostingDetail(
       id: o.id,
       title: o.title,
       workLocation: o.work_location,
+      createdAt: o.created_at,
       requirementCount: counts.get(o.id)?.total ?? 0,
       mustHaveCount: counts.get(o.id)?.mustHave ?? 0,
       hasJd: Boolean(o.current_jd_version_id),
@@ -178,7 +181,7 @@ export async function getOpeningDetail(openingId: string) {
   const { data: opening, error } = await supabase
     .from("opening")
     .select(
-      "id, title, work_location, posting_id, current_jd_version_id, posting:posting_id (id, name, status)",
+      "id, title, work_location, created_at, posting_id, current_jd_version_id, posting:posting_id (id, name, status)",
     )
     .eq("id", openingId)
     .maybeSingle();

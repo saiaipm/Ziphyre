@@ -111,14 +111,19 @@ export function SummaryTile({
   value,
   accent,
   outOf,
+  onClick,
+  active,
 }: {
   label: string;
   value: number;
   accent?: string;
   outOf?: number;
+  /** When given, the tile filters the list below it to what it counts. */
+  onClick?: () => void;
+  active?: boolean;
 }) {
-  return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3">
+  const inner = (
+    <>
       <p className="text-2xl font-semibold tabular-nums">
         <span className={value === 0 ? undefined : accent}>{value}</span>
         {outOf !== undefined && (
@@ -129,6 +134,42 @@ export function SummaryTile({
         )}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
-    </div>
+    </>
+  );
+
+  const shell = "rounded-lg border bg-card px-4 py-3 text-left";
+
+  if (!onClick) {
+    return <div className={cn(shell, "border-border")}>{inner}</div>;
+  }
+
+  // A real button, not a clickable div: this is now a control, and the
+  // pipeline is required to be fully keyboard-operable.
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      // A tile counting nobody filters to an empty list, which reads as
+      // a broken screen rather than an answered question.
+      disabled={value === 0}
+      className={cn(
+        shell,
+        "w-full transition-colors",
+        active
+          ? "border-foreground bg-muted"
+          : "border-border enabled:hover:bg-muted/50",
+        value === 0 && "cursor-default",
+      )}
+    >
+      {inner}
+      <span className="sr-only">
+        {value === 0
+          ? " — nothing to show"
+          : active
+            ? " — filtering by this; activate to clear"
+            : " — activate to filter the list below"}
+      </span>
+    </button>
   );
 }

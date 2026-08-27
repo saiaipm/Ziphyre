@@ -44,6 +44,7 @@ export default async function OpeningDetailPage({
         postingId={postingId}
         title={opening.title}
         workLocation={opening.work_location}
+        createdAt={opening.created_at}
         jdContent={jdVersion?.content ?? null}
         jdVersion={jdVersion?.version ?? null}
         initialRequirements={requirements.map((r) => ({

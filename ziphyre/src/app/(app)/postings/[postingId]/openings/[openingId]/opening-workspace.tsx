@@ -24,6 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { formatDay } from "@/lib/format-date";
 import { modelLabel } from "@/lib/ai/providers";
 import type { ApplicationListItem } from "@/lib/applications";
 import {
@@ -46,6 +47,7 @@ type Props = {
   postingId: string;
   title: string;
   workLocation: string;
+  createdAt: string;
   jdContent: string | null;
   jdVersion: number | null;
   initialRequirements: Requirement[];
@@ -57,6 +59,7 @@ export function OpeningWorkspace({
   postingId,
   title,
   workLocation,
+  createdAt,
   jdContent,
   jdVersion,
   initialRequirements,
@@ -75,7 +78,12 @@ export function OpeningWorkspace({
 
   return (
     <div className="space-y-6">
-      <DetailsCard openingId={openingId} title={title} workLocation={workLocation} />
+      <DetailsCard
+        openingId={openingId}
+        title={title}
+        workLocation={workLocation}
+        createdAt={createdAt}
+      />
 
       <Tabs defaultValue={hasApplications ? "pipeline" : "setup"}>
         <TabsList>
@@ -119,10 +127,12 @@ function DetailsCard({
   openingId,
   title,
   workLocation,
+  createdAt,
 }: {
   openingId: string;
   title: string;
   workLocation: string;
+  createdAt: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [titleVal, setTitleVal] = useState(title);
@@ -150,7 +160,9 @@ function DetailsCard({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-[28px] leading-tight font-semibold">{title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{workLocation}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {workLocation} · Created {formatDay(createdAt)}
+          </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
           <Pencil className="size-3.5" aria-hidden />

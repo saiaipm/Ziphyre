@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus, ArrowRight, FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getPostingDetail } from "@/lib/postings";
+import { formatDay } from "@/lib/format-date";
 import {
   NeedsReviewCallout,
   StageFunnel,
@@ -46,6 +47,8 @@ export default async function PostingDetailPage({
           name={posting.name}
           openingCount={posting.openings.length}
           isClosed={isClosed}
+          createdAt={posting.createdAt}
+          closedAt={posting.closedAt}
         />
         <PostingActions
           postingId={posting.id}
@@ -114,7 +117,7 @@ export default async function PostingDetailPage({
               <div className="min-w-0">
                 <p className="text-sm font-medium">{o.title}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {o.workLocation}
+                  {o.workLocation} · Created {formatDay(o.createdAt)}
                 </p>
               </div>
               <div className="flex items-center gap-4 shrink-0">
