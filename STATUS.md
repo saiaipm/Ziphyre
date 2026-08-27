@@ -75,14 +75,15 @@ automatically.
 **Next: M4 — Pipeline.** Stages, batch actions, disposition, CV viewer,
 reassignment.
 
-**Design note for M4, still open:** the opening page currently
-stacks setup (title/location, JD, all requirements) and the candidates list
-on one long scroll — a byproduct of M2 bolting a minimal list onto the
-existing setup page rather than building real pipeline UI. Split these:
-Setup vs. Pipeline, most likely as tabs on
-`/postings/[postingId]/openings/[openingId]` (which the tech spec's routes
-table already calls "the pipeline" screen). Fold this into M4's plan rather
-than patching it in isolation.
+**~~Design note for M4~~ — done, 27 Aug 2026.** The opening page no longer
+stacks setup and candidates on one scroll: it is now **Pipeline | Setup**
+tabs. Pipeline leads whenever anyone has applied, which is also what FR-78
+requires of a link from Home; Setup leads only while the opening is still
+empty, when there is genuinely nothing else to show.
+
+Home also gained the organisation-wide summary (FR-101 – FR-105): active
+postings and openings, total applications, the five-stage funnel that sums
+to that total, and a separate needs-review callout.
 
 ---
 
