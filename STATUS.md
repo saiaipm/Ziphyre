@@ -240,8 +240,21 @@ query in the job now surfaces its error.
 The posting page carries the promise too: a calm note beyond 30 days, an
 amber deadline inside it, naming what goes and what stays.
 
-**Next: the rest of M6 — FR-79's phone layout.** Home counts already read
-correctly; the mobile pass is what remains.
+**M6 (overview) — done.** FR-77's per-opening counts now come from real
+data: applications received, screened, shortlisted, still at New, and
+needing manual review, on every opening on home. They existed only for
+the sample-data preview before this; real openings showed *requirement*
+totals, which say what was set up rather than what has happened since. An
+opening with nobody in it still falls back to setup state, because "0
+applied" on a role with no job description answers the wrong question.
+
+FR-79 verified at 375px: home has no horizontal overflow, tiles stack
+2-up and the counts wrap. **One real bug found and fixed** — the posting
+page's opening rows were `shrink-0`, so on a phone the whole page scrolled
+sideways by 16px. They wrap now. The pipeline table is deliberately left
+scrolling inside its own container: the spec's stance is desktop for
+working surfaces, phone for the overview, and a twelve-column table is
+not a phone screen.
 
 ---
 

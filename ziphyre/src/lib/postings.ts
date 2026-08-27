@@ -19,14 +19,54 @@ export type PostingSummary = {
     requirementCount: number;
     mustHaveCount: number;
     hasJd: boolean;
+    /**
+     * FR-77. `applied` is every application on the opening; the rest
+     * are subsets of it, so they do not sum to it — `new` and
+     * `screened` are stages, `needsReview` is a screening status that
+     * FR-103 keeps out of the stage counts entirely.
+     */
+    counts: OpeningCounts;
   }[];
 };
 
+export type OpeningCounts = {
+  applied: number;
+  screened: number;
+  shortlisted: number;
+  new: number;
+  needsReview: number;
+};
+
+const EMPTY_COUNTS: OpeningCounts = {
+  applied: 0,
+  screened: 0,
+  shortlisted: 0,
+  new: 0,
+  needsReview: 0,
+};
+
+/** One pass over an opening's applications — FR-77's five numbers. */
+function tallyOpenings(
+  rows: { opening_id: string; current_stage: string; screening_status: string }[],
+): Map<string, OpeningCounts> {
+  const byOpening = new Map<string, OpeningCounts>();
+  for (const a of rows) {
+    const c = byOpening.get(a.opening_id) ?? { ...EMPTY_COUNTS };
+    c.applied += 1;
+    if (a.current_stage === "new") c.new += 1;
+    if (a.current_stage === "screened") c.screened += 1;
+    if (a.current_stage === "shortlisted") c.shortlisted += 1;
+    if (a.screening_status === "needs_manual_review") c.needsReview += 1;
+    byOpening.set(a.opening_id, c);
+  }
+  return byOpening;
+}
+
 /**
- * Application counts aren't queried here yet — the overview/pipeline
- * summary (FR-77) is M6 (Home & retention). `application` exists as
- * of M2, but every opening still reads as zero applied/screened/
- * shortlisted on this screen until that summary is built.
+ * FR-76 and FR-77 — every posting, its openings, and per-opening
+ * counts. The counts landed in M6; before that this screen showed
+ * requirement totals, which say what was set up rather than what has
+ * happened since.
  */
 export async function getPostingsForOrg(): Promise<PostingSummary[]> {
   const supabase = await createClient();
@@ -58,6 +98,15 @@ export async function getPostingsForOrg(): Promise<PostingSummary[]> {
     }
   }
 
+  let openingCounts = new Map<string, OpeningCounts>();
+  if (openingIds.length > 0) {
+    const { data: applications } = await supabase
+      .from("application")
+      .select("opening_id, current_stage, screening_status")
+      .in("opening_id", openingIds);
+    openingCounts = tallyOpenings(applications ?? []);
+  }
+
   return postings.map((p) => ({
     id: p.id,
     name: p.name,
@@ -71,6 +120,7 @@ export async function getPostingsForOrg(): Promise<PostingSummary[]> {
       requirementCount: counts.get(o.id)?.total ?? 0,
       mustHaveCount: counts.get(o.id)?.mustHave ?? 0,
       hasJd: Boolean(o.current_jd_version_id),
+      counts: openingCounts.get(o.id) ?? { ...EMPTY_COUNTS },
     })),
   }));
 }
@@ -142,11 +192,17 @@ export async function getPostingDetail(
     perOpening: new Map<string, { total: number; shortlisted: number }>(),
   };
 
+  let detailCounts = new Map<string, OpeningCounts>();
+
   if (openingIds.length > 0) {
     const { data: applications } = await supabase
       .from("application")
       .select("opening_id, current_stage, screening_status")
       .in("opening_id", openingIds);
+
+    // The same rows answer FR-77's per-opening counts and this page's
+    // roll-up, so they are tallied once rather than fetched twice.
+    detailCounts = tallyOpenings(applications ?? []);
 
     for (const a of applications ?? []) {
       const stage = a.current_stage as StageKey;
@@ -187,6 +243,7 @@ export async function getPostingDetail(
       requirementCount: counts.get(o.id)?.total ?? 0,
       mustHaveCount: counts.get(o.id)?.mustHave ?? 0,
       hasJd: Boolean(o.current_jd_version_id),
+      counts: detailCounts.get(o.id) ?? { ...EMPTY_COUNTS },
     })),
   };
 }

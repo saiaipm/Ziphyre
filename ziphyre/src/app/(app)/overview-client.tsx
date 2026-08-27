@@ -134,10 +134,9 @@ function EmptyState() {
 }
 
 // ---------------------------------------------------------------------------
-// Real data — no application table until M2/M4, so what's meaningful right
-// now is setup completeness (JD attached, requirements marked), not pipeline
-// counts. Once intake and screening land, this card gains the same stats
-// the sample card already shows.
+// Real data. An opening shows FR-77's counts once anyone has applied, and
+// falls back to setup state before that — a row reading "0 applied" on a
+// role with no job description attached answers the wrong question.
 // ---------------------------------------------------------------------------
 
 function RealPostingCard({ posting }: { posting: PostingSummary }) {
@@ -185,7 +184,33 @@ function RealPostingCard({ posting }: { posting: PostingSummary }) {
                 </p>
               </div>
 
-              {!o.hasJd ? (
+              {/* FR-77. Setup state only answers "is this ready?", which
+                  stops being the question the moment anyone applies —
+                  from then on the counts are what Rahul came for. */}
+              {o.counts.applied > 0 ? (
+                <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
+                  <Stat label="Applied" value={o.counts.applied} />
+                  <Stat label="Screened" value={o.counts.screened} />
+                  <Stat
+                    label="Shortlisted"
+                    value={o.counts.shortlisted}
+                    tone="shortlisted"
+                  />
+                  <Stat label="New" value={o.counts.new} />
+                  {o.counts.needsReview > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <AlertTriangle
+                        className="size-3.5 text-fit-review"
+                        aria-hidden
+                      />
+                      <span className="text-sm font-medium text-fit-review">
+                        {o.counts.needsReview}{" "}
+                        {o.counts.needsReview === 1 ? "needs" : "need"} review
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : !o.hasJd ? (
                 <span className="flex items-center gap-1.5 text-sm text-fit-review">
                   <FileWarning className="size-3.5" aria-hidden />
                   No job description
@@ -196,9 +221,7 @@ function RealPostingCard({ posting }: { posting: PostingSummary }) {
                 </span>
               ) : (
                 <span className="text-sm text-muted-foreground">
-                  {o.mustHaveCount} must-have
-                  {o.mustHaveCount === 1 ? "" : "s"} · {o.requirementCount}{" "}
-                  total
+                  No applications yet
                 </span>
               )}
 
