@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createPostingWithOpening } from "../actions";
+import { DiscardButton } from "../discard-button";
 
 export function NewPostingForm() {
   const router = useRouter();
@@ -97,10 +98,14 @@ export function NewPostingForm() {
         </div>
       </section>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <Button type="submit" disabled={saving}>
           {saving ? "Creating…" : "Create posting"}
         </Button>
+        <DiscardButton
+          dirty={Boolean(postingName || openingTitle || workLocation || jdContent)}
+          backHref="/postings"
+        />
       </div>
     </form>
   );
