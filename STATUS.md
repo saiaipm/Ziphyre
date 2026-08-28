@@ -286,26 +286,70 @@ Migration `20260828090000_m7_communications.sql`, applied.
   Setup tab (FR-130/131). Blank means inherited; the card names the link
   actually in effect, because inherited and empty look identical otherwise.
 
+- **FR-110 — the outcome email, offered when rejecting. Built and proven
+  end to end, 28 Aug 2026.** The reject dialog offers to tell the
+  candidate, unticked by default, with the count of real people named on
+  the confirm button and "this cannot be unsent" beside the box.
+  Manual-upload candidates are named as unreachable and excluded;
+  anyone already told is excluded and re-checked at queue time.
+  Messages are queued only for applications that actually moved.
+
+  **The first real email this product has ever sent** went at 15:03 UTC:
+  queued to `sent` in 7 seconds, Gmail accepted it, and
+  `outcome_sent_at` was set 0.3s later — so FR-123's gate armed only
+  after delivery succeeded, and the status page flipped from "Received"
+  to "Not moving forward" exactly when a person chose to tell them.
+
+  **Two real bugs the test caught, neither visible to typecheck, lint or
+  a production build.** The default `outcome_rejected` template carried
+  **no `{{statusLink}}`**, breaking FR-124 outright — the candidate would
+  have been left holding a link that goes on saying "under review". Found
+  by reading the send preview, which is what that preview exists for. And
+  a failed send-check left the offer spinning "Checking who can be
+  emailed…" forever, which reads as the *rejection* being stuck when only
+  the offer had failed; failures now render with their reason and say the
+  rejection can still proceed.
+
 *Not built yet — the rest of M7:*
 
-1. Sending from the pipeline (FR-106 – FR-112), including the offer to send
-   the outcome when rejecting (FR-110).
+1. Sending **other** message kinds from the pipeline (FR-106 – FR-109,
+   FR-111, FR-112) — interview invite and general update. Only the
+   rejection outcome can be sent today.
 2. The Communications **outbox** — what was sent, what failed, retry
-   (FR-133).
+   (FR-133). **This is the gap that bites next:** a delivery failure is
+   recorded on the `message` row with its reason and is visible nowhere
+   in the UI. Queue failures toast; delivery failures do not.
 3. **Template editing** (FR-126 – FR-129). Defaults live in
    `lib/mail/templates.ts` and are used until a customer edits one; the
-   `message_template` table is empty and that is correct.
-4. **No real email has been sent yet.** The credentials verify, but the
-   full send path is unproven end to end.
+   `message_template` table is empty and that is correct. **Specified in
+   tech spec Draft 9 §10A.7** — the plumbing already exists
+   (`getTemplate()` falls back to the defaults, and the table has no
+   update policy), so this is a UI slice on working foundations.
 
-**Start the next session here.** In order: close the two gaps that only
-bite once real mail is flowing — the purge's M7 obligations (Outstanding
-item 1) and the un-reject contradiction (item 2) — then send one real test
-email to a personal address, then build sending from the pipeline.
+**Start the next session here.** Real mail is now flowing, which moves
+two Outstanding items from theoretical to live:
 
-The first two are small, and both are far cheaper to fix now than after
-the first candidate has been emailed. The last is the one that cannot be
-undone once it reaches a real person.
+1. **The purge's M7 obligations (Outstanding item 1).** `message` now has
+   rows, so a purged posting would leave a candidate's name, address and
+   the text they were sent sitting in the outbox. This was zero-risk
+   while the table was empty. It no longer is. §11's rule applies: re-test
+   against a fixture after the change.
+2. **The un-reject contradiction (item 2).** One candidate now genuinely
+   has `outcome_sent_at` set, so moving them back off Rejected reproduces
+   this today rather than hypothetically.
+
+Then either the outbox (FR-133) or template editing (§10A.7) — the outbox
+is the more urgent of the two, because a delivery failure is currently
+invisible in the UI.
+
+**Also deployed 28 Aug:** `ziphyre.vercel.app`, from `main`. Root
+directory `ziphyre`. **Vercel's Hobby plan caps cron at once a day**, so
+`vercel.json` had to drop `/api/cron/jobs` from every minute to daily —
+Vercel rejects the whole config rather than downgrading it, so no
+deployment is created at all until it complies. The `after()` pump means
+interactive work still runs promptly; only work queued with nobody around
+waits. **The production send-check spins** where local works, which
+points at `SUPABASE_SERVICE_ROLE_KEY` on Vercel — unverified.
 
 ---
 
@@ -425,10 +469,8 @@ Two small fixes, both worth doing together before the first real send:
 Neither is large. Both only bite once real mail is going out, which is
 precisely the window this is being written in.
 
-**3. No real email has been sent end to end.** Credentials verify against
-Gmail, but nothing has actually been delivered. The first genuine send is
-the real test of the transport, and it should be to a personal address
-before it is to a candidate.
+**3. Resolved 28 Aug — the transport is proven.** The first real email
+sent end to end at 15:03 UTC, to a personal address. See M7 above.
 
 **4. A screening's "used a fallback" note is computed against today's
 provider order, so it lies after a reorder.** `getApplicationsForOpening`

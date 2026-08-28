@@ -412,13 +412,17 @@ function OutcomeOffer({
   }
 
   return (
-    <div className="rounded-lg border border-border px-3 py-2.5">
-      <label className="flex items-start gap-2 text-sm">
+    // Tinted and outlined rather than a bare panel: this is the only
+    // control in the product that causes an irreversible message to a
+    // real person, and in testing the unticked box was missed entirely
+    // against a flat background. An offer nobody can see is not an offer.
+    <div className="rounded-lg border border-fit-accent/40 bg-fit-accent/5 px-3 py-2.5">
+      <label className="flex cursor-pointer items-start gap-2.5 text-sm">
         <Checkbox
           checked={checked}
           onCheckedChange={(v) => onCheckedChange(v === true)}
           disabled={disabled}
-          className="mt-0.5"
+          className="mt-0.5 size-5 border-2 border-foreground/50 bg-background"
         />
         <span>
           <span className="flex items-center gap-1.5 font-medium">
