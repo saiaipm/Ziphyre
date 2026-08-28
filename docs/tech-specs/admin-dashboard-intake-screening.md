@@ -744,6 +744,68 @@ applies again: it must be re-tested against a fixture before it runs.
 | `POST /api/messages/send` | Confirmed send from the pipeline |
 | `send_message` job | Delivery, retry, failure recording |
 
+### 10A.7 Template editing (FR-126 – FR-129)
+
+The plumbing for this already exists and is load-bearing: `getTemplate()`
+reads the organisation's highest `version` for a kind and falls back to
+`DEFAULT_TEMPLATES` when there is none, `render()` substitutes only the
+FR-127 vocabulary, and `message_template` has an insert policy but
+**no update policy** — FR-129 is enforced by the absence, exactly as
+`screening` and `jd_version` are. What is missing is only the surface.
+
+**Saving writes a new row, never an update.** `version = max(version) + 1`
+for that `(organization_id, kind)`. Two admins saving at the same moment
+both compute the same next version and the unique constraint rejects the
+loser — that is the correct outcome, and it must be surfaced as *"someone
+else saved a new version, reload"* rather than a raw constraint error.
+
+**Restore to default (FR-128) inserts a copy of the code default as a new
+version. It does not delete.** Deleting is not available and should not
+be made available: `message.template_id` references these rows, so
+removing a version would either break the foreign key or orphan the
+record of which wording produced a message a real person received. One
+more version costs a row; FR-129's promise costs nothing to keep.
+
+**Editing a template never changes a message already queued or sent.**
+`queueMessage()` renders at queue time and stores the rendered subject
+and body on the `message` row (§10A.2). This is worth stating because it
+is the property FR-129 actually depends on, and it is invisible in the
+editor.
+
+**The preview needs a real candidate (FR-126), so it needs a server
+round trip** — the five variables come from an application, not from
+placeholders. The most recently submitted application in the
+organisation is a reasonable default with a picker over the rest.
+Non-Goal 9 is safe here by construction rather than by care: the
+vocabulary in `TEMPLATE_VARIABLES` has no score, component, assessment
+or disposition entry, so there is nothing for a preview to leak.
+
+**Unknown variables must be caught before saving, not at send time.**
+`render()` deliberately leaves an unrecognised `{{token}}` as literal
+text so a typo fails visibly instead of mailing a blank — but "visibly"
+means visible to the *candidate* unless the editor checks first.
+`usedVariables()` already returns what a template references; anything
+outside the five is a warning the admin must clear or accept. A
+mistyped `{{candidatename}}` reaching someone's inbox is the failure
+this prevents.
+
+**FR-132's booking-link check belongs here too.** If the interview
+invite template uses `{{bookingLink}}` and no link is set on the
+organisation or the opening, the editor says so at edit time rather
+than leaving it to be discovered at send time.
+
+| Route | Purpose |
+|---|---|
+| `/communications` → Templates | Edit, preview, restore (FR-126 – FR-129) |
+| `loadTemplate(kind)` | Current version or the code default |
+| `saveTemplate(kind, subject, body)` | Insert at `max(version) + 1` |
+| `restoreTemplateDefault(kind)` | Insert the code default as a new version |
+| `loadPreviewVars(applicationId?)` | Real values for the preview |
+
+**Open scope.** This slice is templates only. FR-133's outbox shares the
+`/communications` page and is specified but unbuilt; the page is
+introduced here and grows the outbox next.
+
 ---
 
 ## 11. Retention (TechDecisions §8)
@@ -886,6 +948,7 @@ Retired ranges are listed rather than removed. The numbers are never reused, so 
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 9 | 28 Aug 2026 | **§10A.7 added — template editing (FR-126 – FR-129), specified after FR-110 shipped.** The plumbing already existed: `getTemplate()` reads the latest version and falls back to the code defaults, and `message_template` has no update policy, so FR-129 is enforced by absence exactly as `screening` and `jd_version` are. Three decisions the requirement does not settle. **Restore-to-default inserts a copy of the default as a new version rather than deleting** — `message.template_id` references these rows, so deleting a version would break the record of which wording reached a real person; keeping FR-129's promise costs one row. **Unknown variables are caught in the editor, not at send time**: `render()` deliberately leaves an unrecognised `{{token}}` as literal text so a typo fails visibly, but without a check "visibly" means visible to the candidate — `usedVariables()` already reports what a template references. **Concurrent saves collide on `(organization_id, kind, version)` by design** and must be surfaced as "someone else saved a new version" rather than a constraint error. Also records the property FR-129 actually rests on, which is invisible in the editor: `queueMessage()` renders at queue time and stores the rendered body, so editing a template never alters a message already queued or sent. Found while shipping FR-110: the default `outcome_rejected` template carried no `{{statusLink}}`, breaking FR-124 outright — caught by reading the send preview, not by typecheck, lint or a production build |
 | Draft 8 | 28 Aug 2026 | **§10A added — candidate communications (PN-004, functional spec Draft 9).** Mail goes over SMTP with an app password behind a single `send()` interface, because the Gmail API's `gmail.send` is a restricted scope and PN-002 established that one such scope re-gates the whole consent screen. Sending is a `send_message` job queued **per recipient**, so a failure is attributable to the candidate it was meant for and inherits the existing backoff. `message` stores the **rendered** body rather than only a template id, since FR-129's promise that what was said stays recoverable dies the moment a template is edited. `application.outcome_sent_at` exists so FR-123's gate is one column read on an anonymous request rather than a join. The status page joins `/apply` in the proxy's public-path list — omitting it 404s every status link in production while working locally — and its query deliberately does not fetch score columns at all, because the safest way to honour Non-Goal 9 is to be unable to leak it. Retention grows a second obligation: the purge nulls the status token and clears message contents, which means **the purge job must be re-tested before it runs again** |
 | Draft 7 | 27 Aug 2026 | **M4's stage transitions built (FR-56 – FR-60).** Two security-definer functions join `record_screening` for the same structural reason §2.2 gives: `record_stage_change` writes the history row and moves the pointer in one transaction, and `reassign_application` checks the posting, the self-move and the `(opening_id, candidate_id)` collision under a row lock rather than from the application layer, so two admins racing cannot both pass a pre-check. Both check membership themselves — unlike `record_screening` they are reachable from a Server Action with a user-supplied id, and definer rights would otherwise cross tenants. Three decisions recorded beyond §9: **disposition is constrained in the database**, to FR-58's six values and to On hold / Rejected only, because an invented value would quietly corrupt FR-71's export column; **a no-op move writes no history**, since batch actions make "Rejected → Rejected" easy to produce by accident and §9's own audit trail is the one place that has to stay readable; and **reassignment is not a `stage_event`** — the stage does not change, and a synthetic row would break FR-102's arithmetic. Adds the stage filter FR-66 always specified but which was meaningless while nothing could leave `screened`. Reassignment's rescreen needs no new payload: `screen_application` resolves the opening at run time, so a job queued after the move reads the new JD by construction |
 | Draft 6 | 27 Aug 2026 | Records the M4 UI shell as built, and one deliberate deviation: the screening-side filters and sorting run client-side over the already-loaded list rather than as a composed query (§9), justified by §15's several-hundred ceiling. The form-answer filters and FR-68's exclusion counting remain unbuilt and keep the server-side design. Also notes what the shell does *not* include — nothing can yet move an application off `screened`, so the FR-101 funnel cannot change until the stage transitions land |

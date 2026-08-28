@@ -18,7 +18,7 @@ file is deliberately just the moving parts.
 | `ProductNotes/PN-003-…md` | Why the screening prompt is visible but not editable |
 | `ProductNotes/PN-004-…md` | Candidate communications — why SMTP not OAuth, and the status-page rules |
 | `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-105 (Draft 9; FR-1–4, 19–29, 36, 62–65 retired) |
-| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 8) |
+| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 9) |
 | `Testing/README.md` | Why the baseline file is gitignored, and what it's for |
 
 **Read `ziphyre/AGENTS.md` before writing code.** This Next.js version has
