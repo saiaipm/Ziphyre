@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/jobs",
-      "schedule": "* * * * *"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/cron/purge?commit=1",
