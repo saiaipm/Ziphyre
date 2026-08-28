@@ -12,10 +12,14 @@ import { NextResponse, type NextRequest } from "next/server";
 // not a user session — Vercel Cron never carries one. Without this,
 // every cron invocation would redirect to /sign-in and never run.
 //
-// /apply and /api/apply are the product's only genuinely public surface
-// (tech spec §5.1). Candidates have no account and never sign in, so
-// gating them here would make applying impossible. Their handlers do
-// their own validation and never touch the database as `anon`.
+// /apply, /api/apply and /status are the product's public surfaces
+// (tech spec §5.1, §10A.4). Candidates have no account and never sign
+// in, so gating them here would make applying — and checking a status —
+// impossible. Their handlers do their own validation, authorise on an
+// unguessable token, and never touch the database as `anon`.
+//
+// Dropping any of these breaks the surface ONLY in production: locally
+// a signed-in session masks it, and a candidate's 404 is the first sign.
 const PUBLIC_PATHS = [
   "/sign-in",
   "/auth",
@@ -23,6 +27,7 @@ const PUBLIC_PATHS = [
   "/api/cron",
   "/apply",
   "/api/apply",
+  "/status",
 ];
 
 export async function middleware(request: NextRequest) {
