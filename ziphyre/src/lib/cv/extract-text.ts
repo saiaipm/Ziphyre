@@ -1,6 +1,29 @@
 import "server-only";
-import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
+
+/**
+ * **`pdf-parse` is imported lazily, and that is load-bearing.**
+ *
+ * It pulls in `pdfjs-dist`, which touches `DOMMatrix` — a browser API
+ * that exists in local Node but not on Vercel's serverless runtime. As a
+ * top-level import it was evaluated whenever this module was loaded, so
+ * merely importing `extractDocumentText` anywhere brought the whole
+ * module graph down in production:
+ *
+ *   Failed to load external module pdf-parse: ReferenceError: DOMMatrix is not defined
+ *
+ * `postings/actions.ts` imports this file for JD upload, so every server
+ * action in that file — stage moves, the send-check, everything —
+ * inherited the failure, on a route that never touches a PDF. Deferring
+ * the import confines the cost to the code path that actually parses one.
+ *
+ * This does NOT make PDF parsing work on Vercel; it makes everything
+ * else stop depending on it. See `extractPdfText` for that.
+ */
+async function loadPdfParse() {
+  const { PDFParse } = await import("pdf-parse");
+  return PDFParse;
+}
 
 export type CvExtractionResult =
   | { ok: true; text: string }
@@ -90,6 +113,7 @@ export async function extractDocumentText(
 }
 
 async function extractPdfText(bytes: Buffer): Promise<string> {
+  const PDFParse = await loadPdfParse();
   const parser = new PDFParse({ data: bytes });
   try {
     const result = await parser.getText();
