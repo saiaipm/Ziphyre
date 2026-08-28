@@ -18,6 +18,7 @@ export const MESSAGE_KINDS = [
   "application_received",
   "interview_invite",
   "outcome_rejected",
+  "outcome_reversed",
   "general_update",
 ] as const;
 
@@ -27,6 +28,7 @@ export const MESSAGE_KIND_LABELS: Record<MessageKind, string> = {
   application_received: "Application received",
   interview_invite: "Interview invite",
   outcome_rejected: "Not moving forward",
+  outcome_reversed: "Back under consideration",
   general_update: "General update",
 };
 
@@ -102,6 +104,30 @@ Your application status is here, and will stay up to date:
 {{statusLink}}
 
 We're grateful you thought of us, and we wish you well with your search.
+
+{{organisationName}}`,
+  },
+
+  // A reversal says one specific thing and can be written properly in
+  // advance, so it gets its own kind rather than borrowing
+  // `general_update` — whose body is deliberately a blank to fill in.
+  // Reusing that one meant "[Write your update here.]" was sendable to a
+  // real candidate, which is exactly what happened before this existed.
+  //
+  // The wording claims nothing about the outcome. A reversal means the
+  // application is open again, not that anyone has decided anything —
+  // Principle 1's line between ranking and deciding applies to what
+  // candidates are told as much as to the pipeline.
+  outcome_reversed: {
+    subject: "Your application is open again — {{roleTitle}}",
+    body: `Hi {{candidateName}},
+
+We wrote to you recently to say we would not be taking your application for {{roleTitle}} further. That has changed, and your application is under consideration again.
+
+We are sorry for the confusion. You can see where it stands here, and this page will stay up to date:
+{{statusLink}}
+
+Thank you for your patience.
 
 {{organisationName}}`,
   },

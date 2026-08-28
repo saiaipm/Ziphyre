@@ -10,7 +10,7 @@ export type { OfferKind, OutcomeRecipient };
 
 const TEMPLATE_FOR: Record<OfferKind, MessageKind> = {
   reject: "outcome_rejected",
-  reversal: "general_update",
+  reversal: "outcome_reversed",
 };
 
 /**
