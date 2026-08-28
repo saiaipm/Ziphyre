@@ -8,6 +8,7 @@ import {
   Briefcase,
   Building2,
   Sparkles,
+  Mail,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -51,6 +52,7 @@ const primaryNav = [
 const settingsNav = [
   { href: "/settings/organization", label: "Organization", icon: Building2 },
   { href: "/settings/screening", label: "Screening", icon: Sparkles },
+  { href: "/settings/communications", label: "Communications", icon: Mail },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean) {

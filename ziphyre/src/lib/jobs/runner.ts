@@ -5,7 +5,13 @@ import {
   runScreenApplication,
   markScreeningNeedsManualReview,
 } from "@/lib/jobs/handlers/screen-application";
-import type { JobKind, JobRow, ScreenApplicationPayload } from "@/lib/jobs/types";
+import { deliverMessage, markMessageFailed } from "@/lib/mail/send";
+import type {
+  JobKind,
+  JobRow,
+  ScreenApplicationPayload,
+  SendMessagePayload,
+} from "@/lib/jobs/types";
 
 /** Tech spec §7: 1m, 5m, 15m, 1h, 6h — indexed by attempt number (1-based). */
 const BACKOFF_SECONDS = [60, 300, 900, 3600, 21600];
@@ -29,6 +35,12 @@ async function dispatch(job: JobRow): Promise<void> {
         job.payload as ScreenApplicationPayload,
       );
       return;
+    case "send_message":
+      await deliverMessage(
+        job.organization_id,
+        (job.payload as SendMessagePayload).messageId,
+      );
+      return;
     default:
       throw new Error(`unknown job kind: ${job.kind}`);
   }
@@ -42,6 +54,16 @@ async function handleTerminalFailure(job: JobRow, message: string): Promise<void
       job.organization_id,
       payload.applicationId,
       `Screening couldn't complete after several attempts: ${message}`,
+    );
+  }
+  // FR-111: a message that ran out of retries is marked failed against
+  // the candidate it was meant for, never left looking queued forever.
+  if (job.kind === "send_message") {
+    const payload = job.payload as SendMessagePayload;
+    await markMessageFailed(
+      job.organization_id,
+      payload.messageId,
+      `Couldn't send after several attempts: ${message}`,
     );
   }
 }

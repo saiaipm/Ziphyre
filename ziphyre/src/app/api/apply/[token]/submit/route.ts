@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { runQueuedJobs } from "@/lib/jobs/runner";
 import { MAX_CV_BYTES, ALLOWED_CV_MIME, SubmitSchema } from "@/lib/apply/schema";
+import { queueMessage, statusUrl } from "@/lib/mail/send";
 import {
   CV_BUCKET,
   clientIp,
@@ -140,7 +141,7 @@ export async function POST(
         expectedCtc: f.expectedCtc,
       },
     })
-    .select("id")
+    .select("id, status_token")
     .single();
 
   if (applicationError || !application) {
@@ -179,11 +180,40 @@ export async function POST(
     reason: "new",
   });
 
+  // FR-117. The only message Ziphyre sends without a person choosing
+  // to — and the direct expression of Principle 4: the candidate can
+  // find out where they stand without asking anyone.
+  //
+  // FR-118: intake never depends on mail working. A failure here is
+  // recorded in the outbox and the application is still accepted and
+  // screened; it must not cost the candidate their submission.
+  try {
+    await queueMessage({
+      organizationId: posting.organizationId,
+      applicationId: application.id,
+      kind: "application_received",
+      toEmail: f.email,
+      vars: {
+        candidateName: f.fullName,
+        roleTitle:
+          posting.openings.find((o) => o.id === f.openingId)?.title ??
+          "the role",
+        organisationName: posting.organizationName,
+        statusLink: statusUrl(application.status_token),
+      },
+      sentBy: null,
+    });
+  } catch {
+    // Deliberately swallowed — see FR-118 above.
+  }
+
   await recordAttempt(posting.postingId, ipHash);
 
   // Screening runs after the response is sent, never during it (FR-96).
   after(() => {
-    runQueuedJobs({ kinds: ["screen_application"] }).catch(() => {});
+    runQueuedJobs({ kinds: ["screen_application", "send_message"] }).catch(
+      () => {},
+    );
   });
 
   return NextResponse.json({ ok: true }, { status: 201 });

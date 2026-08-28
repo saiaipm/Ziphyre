@@ -958,3 +958,37 @@ function describeReassignFailure(message: string): string {
   }
   return "Couldn't move this candidate. Please try again.";
 }
+
+/**
+ * FR-131. A per-opening booking link, overriding the organisation's.
+ * Null means "use the organisation's" — the opening does not carry a
+ * copy of it, so changing the default reaches every opening that never
+ * set its own.
+ */
+export async function updateOpeningBookingUrl(input: {
+  openingId: string;
+  postingId: string;
+  bookingUrl: string;
+}): Promise<ActionResult> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const trimmed = input.bookingUrl.trim();
+  if (trimmed && !/^https?:\/\/\S+$/i.test(trimmed)) {
+    return {
+      ok: false,
+      error: "That needs to be a full link starting with https://",
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("opening")
+    .update({ booking_url: trimmed || null })
+    .eq("id", input.openingId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/postings/${input.postingId}/openings/${input.openingId}`);
+  return { ok: true, data: undefined };
+}

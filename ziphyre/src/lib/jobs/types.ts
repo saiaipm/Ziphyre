@@ -1,4 +1,4 @@
-export type JobKind = "screen_application";
+export type JobKind = "screen_application" | "send_message";
 
 export type ScreenApplicationPayload = {
   applicationId: string;
@@ -6,9 +6,14 @@ export type ScreenApplicationPayload = {
   reason: "new" | "retry" | "rescreen" | "reassigned";
 };
 
+/** Tech spec §10A.3 — one job per recipient, never per batch. */
+export type SendMessagePayload = { messageId: string };
+
 export type JobPayload<K extends JobKind> = K extends "screen_application"
   ? ScreenApplicationPayload
-  : never;
+  : K extends "send_message"
+    ? SendMessagePayload
+    : never;
 
 export type JobRow = {
   id: string;
