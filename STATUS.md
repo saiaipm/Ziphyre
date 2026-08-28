@@ -1,6 +1,6 @@
 # Ziphyre — Current State
 
-**Updated:** 27 August 2026
+**Updated:** 28 August 2026
 **Purpose:** Session handoff. Where the build actually is, what's next, and
 what's outstanding. Everything durable lives in the documents below — this
 file is deliberately just the moving parts.
@@ -16,8 +16,9 @@ file is deliberately just the moving parts.
 | `ProductNotes/PN-001-…md` | The original feature ask |
 | `ProductNotes/PN-002-…md` | Why Google intake was replaced by a hosted apply page |
 | `ProductNotes/PN-003-…md` | Why the screening prompt is visible but not editable |
-| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-105 (Draft 8; FR-1–4, 19–29, 36, 62–65 retired) |
-| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 7) |
+| `ProductNotes/PN-004-…md` | Candidate communications — why SMTP not OAuth, and the status-page rules |
+| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-105 (Draft 9; FR-1–4, 19–29, 36, 62–65 retired) |
+| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 8) |
 | `Testing/README.md` | Why the baseline file is gitignored, and what it's for |
 
 **Read `ziphyre/AGENTS.md` before writing code.** This Next.js version has
@@ -257,6 +258,51 @@ scrolling inside its own container: the spec's stance is desktop for
 working surfaces, phone for the overview, and a twelve-column table is
 not a phone screen.
 
+
+**M7 (candidate communications) — half built, on `m8-candidate-communications`.**
+PN-004, functional spec Draft 9 (FR-106 – FR-135), tech spec Draft 8 §10A.
+Migration `20260828090000_m7_communications.sql`, applied.
+
+*Built and verified:*
+
+- **SMTP transport** behind one `send()` interface (`lib/mail/transport.ts`).
+  **Not OAuth, deliberately** — `gmail.send` is a restricted scope and
+  PN-002 established that one sensitive scope re-gates the whole consent
+  screen, admin sign-in included.
+- **Sender settings** at Settings → Communications. Credentials are proven
+  against Gmail *before* saving (FR-114) — verified with deliberately wrong
+  ones: real connection, Gmail 535, actionable error, nothing written.
+- **The status page** `/status/[token]` — public, no login. Verified in all
+  four states. **The one that matters: a candidate who is internally
+  Rejected but has not been told sees "Received"** (FR-123, gated on
+  `application.outcome_sent_at`). Its query fetches no score column at all,
+  so Non-Goal 9 is structural rather than remembered.
+- **`/status` is in the middleware public-path list.** Confirmed with no
+  cookies: status page 200s for an anonymous candidate, `/postings` still
+  redirects to sign-in.
+- **Confirmation email queued on apply** (FR-117), carrying the status
+  link, wrapped so a mail failure cannot cost a candidate their submission.
+- **Booking link**, org-wide in Settings and overridable per opening on the
+  Setup tab (FR-130/131). Blank means inherited; the card names the link
+  actually in effect, because inherited and empty look identical otherwise.
+
+*Not built yet — the rest of M7:*
+
+1. Sending from the pipeline (FR-106 – FR-112), including the offer to send
+   the outcome when rejecting (FR-110).
+2. The Communications **outbox** — what was sent, what failed, retry
+   (FR-133).
+3. **Template editing** (FR-126 – FR-129). Defaults live in
+   `lib/mail/templates.ts` and are used until a customer edits one; the
+   `message_template` table is empty and that is correct.
+4. **No real email has been sent yet.** The credentials verify, but the
+   full send path is unproven end to end.
+
+**Start the next session here.** In order: finish the purge's M7
+obligations (Outstanding item 1), send one real test email to a personal
+address, then build sending from the pipeline. The first two are small and
+the second is the one that cannot be undone once it reaches a candidate.
+
 ---
 
 ## M2 test result — is the ranking trustworthy?
@@ -291,24 +337,27 @@ baseline's "treat CA as a hard gate" scenario). Compared to
 **Git:** on `main`, in sync with `origin/main` at `bd190aa`. Everything
 described above is merged. No unmerged branches carry live work.
 
-**Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): 14 tables, RLS on all,
-13 migrations applied.
-`organization`, `app_user`, `membership`, `posting`, `opening`, `jd_version`,
-`requirement`, `provider_settings`, `candidate`, `application`, `screening`,
-`stage_event`, `job`, `apply_attempt` — plus a private `cvs` Storage bucket.
-`google_connection` and `unmatched_submission` were dropped by M3.5.
+**Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): **17 tables**, RLS on
+all. The M2/M4 set plus M7's `mail_settings`, `message_template` and
+`message`. `application` gained `status_token` (unique, one per
+application) and `outcome_sent_at`; `opening` gained `booking_url`.
 
 **Local data** (the demo org): 1 open posting "Finance hiring, August,
-Demo", now with **two** openings. Chartered Accountant / Hyderabad — 29
-requirements, 2 must-have (CA qualification, Tally) — holds 7
-applications: 1 Shortlisted, 4 Screened, 2 Rejected. **Accounts Executive
-/ Hyderabad was created 27 Aug purely to test FR-60** and holds the single
-application reassigned into it. Delete it if the demo should go back to
-one opening; nothing depends on it.
+Demo" with two openings — Chartered Accountant (7 applications: 2
+Shortlisted, 4 Screened, 1 Rejected) and Accounts Executive (1). All 8
+carry a `status_token`, so every one has a working status page.
+`message` and `message_template` are empty, which is correct: no mail has
+been sent, and template defaults live in code until a customer edits one.
 
-Of the 8 applications, seven are the real CA CVs by manual upload; one
-("Sai Phani") came through the retired Google path and keeps
-`source = 'form'` for provenance.
+**Two admins**, both active in the same organisation:
+`saiphanimba09@gmail.com` (original) and **`ziphyre.ai@gmail.com` (the
+primary from 28 Aug)**. `SEED_ADMIN_EMAIL` now accepts a comma-separated
+list, and both are in `.env.local`. **Vercel needs the same value** or
+only the original address will work in production.
+
+**Mail sender configured and verified:** `ziphyre.ai@gmail.com`, Gmail
+SMTP app password, `verified_at` set — Gmail accepted it on a real
+connection. No booking link set yet.
 
 **Providers configured**, in fallback order. *Re-entered 27 Aug 2026 after
 the key rotation, in a different order from before — NVIDIA is now the
@@ -328,7 +377,25 @@ Split so a fresh session can see at a glance what still needs a human.
 
 ### Needs a decision or action
 
-**1. A screening's "used a fallback" note is computed against today's
+**1. The purge does not yet clear message contents or status tokens —
+finish this before any real candidate is emailed.** Tech spec §10A.5 says
+`purge_expired` must null `application.status_token` and clear
+`message.to_email`, `subject` and `body`, keeping only `kind`, `status`
+and `sent_at`. **That is specified and not implemented.** Right now the
+risk is zero — `message` has no rows — but the moment mail is sent, a
+purged posting would leave candidates' names, addresses and the text they
+were sent sitting in the outbox, which breaks the promise the apply page
+makes. The status *page* is already safe (it checks `purged_at` and shows
+the expired-link copy), so this is specifically the outbox and the token.
+**And §11's rule applies: the purge job must be re-tested against a
+fixture after the change.**
+
+**2. No real email has been sent end to end.** Credentials verify against
+Gmail, but nothing has actually been delivered. The first genuine send is
+the real test of the transport, and it should be to a personal address
+before it is to a candidate.
+
+**3. A screening's "used a fallback" note is computed against today's
 provider order, so it lies after a reorder.** `getApplicationsForOpening`
 in `src/lib/applications.ts` derives `usedFallback` by comparing the stored
 provider against the *current* chain. The 27 Aug reorder therefore made
@@ -339,7 +406,7 @@ which model judged a candidate. **Fix by recording the fact at write time**
 (a `was_fallback` column set by the screening job, which already knows)
 rather than deriving it at read time. Found 27 Aug while verifying M4.
 
-**2. CTC and notice period are free text, so they can only be searched,
+**4. CTC and notice period are free text, so they can only be searched,
 not ranged.** The apply form takes them as strings — "8 LPA",
 "₹12,00,000", "2 months", "Immediate" — so the filter matches text. What
 a recruiter actually wants is "expected CTC under 12 LPA", and that needs
@@ -348,7 +415,7 @@ the existing strings instead would mean guessing at a dozen notations, and
 a wrong guess silently drops a candidate — the exact failure FR-68 exists
 to prevent. This is a form change, not a filter change.
 
-**3. CV bundles are capped at 40 and built in-request.** Tech spec §10
+**5. CV bundles are capped at 40 and built in-request.** Tech spec §10
 puts them behind a `build_export` job because their size is
 unpredictable; that job does not exist. Beyond 40 the export is refused
 with an explanation. **This is the item most likely to bite in
@@ -356,7 +423,7 @@ production** — a serverless response has a size ceiling a local dev
 server does not, so a bundle that works here can fail deployed. Build the
 job before promising CV bundles to a customer.
 
-**4. `exceljs` carries a moderate advisory through `uuid`.**
+**6. `exceljs` carries a moderate advisory through `uuid`.**
 GHSA-w5hq-g745-h8pq — a missing buffer bounds check in uuid v3/v5/v6,
 reachable only when a `buf` argument is passed, which exceljs does not
 do. There is no semver-compatible fix; `npm audit fix --force` would
@@ -364,32 +431,32 @@ change exceljs itself. Left as-is deliberately rather than forcing a
 breaking downgrade over an advisory our usage cannot reach. Recheck when
 exceljs bumps its uuid.
 
-**5. Export PDFs are Latin-1 only.** No font is registered, so
+**7. Export PDFs are Latin-1 only.** No font is registered, so
 @react-pdf's built-in Helvetica is used — a font fetch failing inside a
 request would turn an export into a 500. The cost is that a candidate
 whose name needs Devanagari or Tamil will not render in the PDF. Worth
 fixing with a bundled font file the first time it matters, which for an
 Indian market may be soon.
 
-**6. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
+**8. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
 middleware convention and warns on every boot:
 `npx @next/codemod@canary middleware-to-proxy .` **The migration must carry
 the public-path list forward** — `/apply`, `/api/apply` and `/api/cron`. Drop
 them and intake and cron both break in production while looking fine locally.
 
-**7. Twenty-nine requirements may be too many to mark by hand.** The CA JD
+**9. Twenty-nine requirements may be too many to mark by hand.** The CA JD
 genuinely contains all of them, and some are boilerplate nobody would gate on
 ("Communication skills"). Deliberately *not* filtered — that would mean the
 model deciding what matters, which the design refuses. If marking them proves
 tedious the fix is UI (group or bulk-dismiss soft skills), never a cleverer
 prompt.
 
-**8. Tally hallucination — accepted, not fixed.** Screening credits the
+**10. Tally hallucination — accepted, not fixed.** Screening credits the
 top-ranked candidate with Tally experience their CV never mentions,
 surviving two prompt revisions. Decided 22 Aug 2026: accept as a known model limitation;
 revisit only if the pattern repeats. See `TechDecisions.md` §7.
 
-**9. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
+**11. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
 `.doc` path, but no image-only PDF has been tried. Low priority now the path
 itself works.
 
@@ -557,6 +624,11 @@ Outstanding → "Load-bearing lines a cleanup would plausibly delete".)
   commit — re-check with
   `git log --all --diff-filter=A --name-only | grep -i resume` before
   publishing anything.
+
+**Port 3000 is shared.** When the assistant verifies anything in the
+browser it starts a dev server on 3000, and your own `npm run dev` then
+fails with a port conflict. If it won't start and nothing looks broken,
+that is why — ask for the port back.
 
 **Running it:** `npm run dev` from `ziphyre/`. The apply page lives at
 `/apply/<posting.apply_token>` — get the link from the posting page, or
