@@ -437,15 +437,78 @@ only the original address will work in production.
 SMTP app password, `verified_at` set — Gmail accepted it on a real
 connection. No booking link set yet.
 
-**Providers configured**, in fallback order. *Re-entered 27 Aug 2026 after
-the key rotation, in a different order from before — NVIDIA is now the
-primary, not OpenAI. Worth knowing before reading any provenance line.*
+**Providers configured**, in fallback order. **Reordered 28 Aug after
+NVIDIA was found not to respond at all from Vercel** — it burned the
+full 25s timeout on every screening before failing over. OpenAI is
+primary again and answers in ~6s.
 
-| # | Provider | Model | Key ends |
-|---|---|---|---|
+| # | Provider | Model |
+|---|---|---|
+| 0 | OpenAI | gpt-4o-mini |
+| 1 | Google Gemini | gemini-3.5-flash-lite |
+| 2 | NVIDIA NIM | openai/gpt-oss-20b |
+
+---|---|---|---|
 | 0 | NVIDIA NIM | openai/gpt-oss-20b | j2WZ |
 | 1 | OpenAI | gpt-4o-mini | RnsA |
 | 2 | Google Gemini | gemini-3.5-flash-lite | preg |
+
+---
+
+## Production is a different machine — 28 Aug
+
+Deployed to **`ziphyre.vercel.app`** (Hobby, region bom1), root
+directory `ziphyre`, auto-deploying from `main`. Everything below was
+found *only* in production, after a green typecheck, lint and build.
+**Read this before assuming local behaviour transfers.**
+
+**Four failures stacked behind one symptom.** A PDF upload that read
+"screening broke" was, in order: pdfjs touching `DOMMatrix` (a browser
+API no Node has) at import time; the pdfjs **worker file not being
+deployed** because it is loaded by a runtime path string that static
+tracing cannot see; the **10-second function limit**; and finally the
+real cause — **a provider that never answered**. Each was invisible
+until the one before it was fixed.
+
+- **`outputFileTracingIncludes`** now ships `pdf.worker.mjs`.
+  `serverExternalPackages` keeps pdfjs unbundled so the worker stays
+  beside its parent, which only helps if the worker is deployed at all.
+- **`maxDuration = 60`** on the three routes that run jobs: the opening
+  page (its Server Actions pump the queue via `after()`), the cron
+  runner, and the public apply route. **A timeout is not an error and
+  logs nothing**, so before this the only symptom was a job that never
+  finished.
+- **`lib/cv/dom-matrix-polyfill.ts`** — a real affine 2D matrix, not a
+  stub, installed before the dynamic `pdf-parse` import.
+- **`pdf-parse` is imported lazily.** As a top-level import it was
+  evaluated whenever `postings/actions.ts` loaded, so a PDF-only
+  dependency broke *every server action in that file* on a route that
+  never opens a PDF. That is what "couldn't check who can be emailed"
+  was.
+- **Model calls now time out at 25s and fail over**; there was no
+  timeout anywhere in that path before.
+- **The job runner stops claiming after 45s** rather than after a fixed
+  count, so it never starts work it cannot finish. Two screenings
+  sharing one invocation is how an application ended up `in_progress`
+  with a score already written.
+
+**PDF parsing on Vercel now takes ~220ms.** The `@napi-rs/canvas`
+warnings in the logs are noise; text extraction does not need it.
+
+**Vercel Hobby caps cron at once per day**, and rejects the whole
+`vercel.json` rather than downgrading an invalid schedule — which is why
+the first deployment never appeared. `/api/cron/jobs` therefore runs
+daily instead of every minute. The `after()` pump covers interactive
+work; **anything queued with nobody around waits up to 24 hours**, and
+`reclaimStuckJobs`' 10-minute rule effectively becomes 24 hours too.
+This is the strongest single argument for a paid plan.
+
+**How to debug production from here.** The Vercel MCP is connected with
+project scope. `get_runtime_errors` gives grouped clusters and is the
+right first call; `get_runtime_logs` with a `deploymentId` for detail.
+Timing lines are in place: `[pdf] import Xms, parse Yms`, `[ai]
+provider ok in Xms`. **Reading those logs answered in one run what an
+hour of inference did not.**
 
 ---
 
@@ -481,14 +544,15 @@ through the admin client. It would break every send offer in production.
 
 **4. A screening's "used a fallback" note is computed against today's
 provider order, so it lies after a reorder.** `getApplicationsForOpening`
-in `src/lib/applications.ts` derives `usedFallback` by comparing the stored
-provider against the *current* chain. The 27 Aug reorder therefore made
-every 22 Aug screening — run by gpt-4o-mini, the primary at the time —
-render as "Screened by GPT-4o mini after your primary provider failed".
-That is false, and FR-86's whole point is that the admin is told honestly
-which model judged a candidate. **Fix by recording the fact at write time**
-(a `was_fallback` column set by the screening job, which already knows)
-rather than deriving it at read time. Found 27 Aug while verifying M4.
+in `src/lib/applications.ts` derives `usedFallback` by comparing the
+stored provider against the *current* chain. **This got worse on 28 Aug**:
+the chain was reordered twice in two days, so the note is now wrong for
+most historical screenings in both directions. Worse, NVIDIA sat as
+primary from 27 Aug while not responding at all — so screenings that
+say "primary" were in fact fallbacks, and the one thing FR-86 exists to
+tell the admin honestly has been inverted. **Fix by recording the fact
+at write time** (a `was_fallback` column set by the screening job, which
+already knows) rather than deriving it at read time.
 
 **5. CTC and notice period are free text, so they can only be searched,
 not ranged.** The apply form takes them as strings — "8 LPA",
