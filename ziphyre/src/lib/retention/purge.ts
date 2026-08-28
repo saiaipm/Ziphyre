@@ -35,6 +35,8 @@ export type PurgeReport = {
     candidatesAnonymised: number;
     candidatesKept: number;
     screeningsCleared: number;
+    /** §10A.5 — outbox rows stripped of who was written to and what was said. */
+    messagesCleared: number;
   }[];
   expiredAttempts: number;
   errors: string[];
@@ -152,6 +154,7 @@ async function purgePosting(
     candidatesAnonymised: 0,
     candidatesKept: 0,
     screeningsCleared: 0,
+    messagesCleared: 0,
   };
   if (openingIds.length === 0) return result;
 
@@ -202,6 +205,16 @@ async function purgePosting(
     .in("application_id", appIds);
   result.screeningsCleared = screeningCount ?? 0;
 
+  // §10A.5. Counted before the commit so a dry run reports it, like
+  // everything else here — the whole point of the dry run is that it
+  // says what *would* go.
+  const { count: messageCount } = await admin
+    .from("message")
+    .select("id", { count: "exact", head: true })
+    .in("application_id", appIds)
+    .neq("to_email", "");
+  result.messagesCleared = messageCount ?? 0;
+
   if (dryRun) return result;
 
   // ---- The irreversible part, narrowest blast radius first ------------
@@ -217,6 +230,24 @@ async function purgePosting(
 
   // §11's retained set — component ratings, overall score, stage,
   // disposition, dates — is everything NOT named here.
+  // §10A.5. The outbox keeps `kind`, `status` and `sent_at` — enough to
+  // account for the fact that something was sent — and loses the address
+  // it went to and every word of it. Emptied rather than nulled because
+  // all three columns are NOT NULL, the same handling as the screening
+  // prose below.
+  //
+  // Done BEFORE the application update: `purged_at` is what makes this
+  // job idempotent, so if the run dies between the two, the retry still
+  // sees these applications as unpurged and comes back for the messages.
+  // The reverse order would leave message bodies behind permanently.
+  if (result.messagesCleared > 0) {
+    const { error: messageError } = await admin
+      .from("message")
+      .update({ to_email: "", subject: "", body: "" })
+      .in("application_id", appIds);
+    if (messageError) throw new Error(`messages: ${messageError.message}`);
+  }
+
   const { error: appError } = await admin
     .from("application")
     .update({
@@ -225,6 +256,11 @@ async function purgePosting(
       cv_original_filename: null,
       form_answers: {},
       admin_overrides: {},
+      // §10A.5. The status page is candidate data behind a public URL,
+      // so the URL has to die with the data. `getCandidateStatus` finds
+      // nothing and shows the expired-link copy rather than a 404 — a
+      // candidate who bookmarked it deserves an explanation.
+      status_token: null,
       purged_at: now.toISOString(),
     })
     .in("id", appIds);
