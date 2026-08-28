@@ -84,6 +84,12 @@ If none of those times work, just reply to this email and we'll find another.
 {{organisationName}}`,
   },
 
+  // FR-124 is why the status link is here. The candidate already holds
+  // one from their confirmation email, and until this message is sent
+  // that page still reads "under review" (FR-123). Re-including the same
+  // link is what stops the product going on telling them something that
+  // is no longer true — it is not a second link, and no new one is ever
+  // issued.
   outcome_rejected: {
     subject: "Your application — {{roleTitle}}",
     body: `Hi {{candidateName}},
@@ -91,6 +97,9 @@ If none of those times work, just reply to this email and we'll find another.
 Thank you for applying for {{roleTitle}} at {{organisationName}}, and for the time you put into it.
 
 We won't be taking your application further on this occasion.
+
+Your application status is here, and will stay up to date:
+{{statusLink}}
 
 We're grateful you thought of us, and we wish you well with your search.
 
