@@ -1,9 +1,9 @@
 # Functional Spec — Screening Desk
 
-**Source:** `ProductNotes/PN-001-admin-dashboard-and-screening.md`, revised by `ProductNotes/PN-002-native-application-form.md`
+**Source:** `ProductNotes/PN-001-admin-dashboard-and-screening.md`, revised by `ProductNotes/PN-002-native-application-form.md` and `ProductNotes/PN-004-candidate-communications.md`
 **Product truth:** `ProductContext.md` v1.1
 **Baseline for validation:** `Testing/baseline-ranking-CA-role.md`
-**Status:** Draft 7 · 27 August 2026
+**Status:** Draft 9 · 28 August 2026
 
 ---
 
@@ -46,7 +46,9 @@ Validated against the seven real Chartered Accountant applicants and the human r
 | **Meera** (HR Generalist) | Primary. Admin. | Lives in the pipeline daily. Every design trade-off resolves in her favour. |
 | **Rahul** (Founder) | Secondary. Admin. | The home overview — "is hiring moving?" answered in one glance, on a phone, without generating work for Meera. |
 
-**Not served in this build.** **Priya** (Candidate) applies on Ziphyre's application page and sees a confirmation, and nothing more — candidate-facing status is a later build. **Arjun** (Hiring Manager) and **Sana** (External Recruiter) have no access; they receive exported files from Meera.
+| **Priya** (Candidate) | Served from Draft 9. | Applies, is emailed a confirmation with a status link, and can see where she stands without asking anyone — Principle 4. She never sees a score (Non-Goal 9). |
+
+**Not served in this build.** **Arjun** (Hiring Manager) and **Sana** (External Recruiter) have no access; they receive exported files from Meera.
 
 ---
 
@@ -65,14 +67,18 @@ Validated against the seven real Chartered Accountant applicants and the human r
 - Export: spreadsheet, document, optional CV bundle
 - Home overview across postings and openings
 - AI provider selection with the customer's own key
+- Candidate communications: interview invites, outcomes and updates, sent by hand from the pipeline
+- A candidate-facing status page, and the automatic application-received message that carries its link
+- Editable message templates, one sending identity per organisation, and a carried booking link
 
 ### Out of scope (v1)
 
-- Anything candidate-facing beyond the application page and its confirmation
-- Candidate accounts, sign-in, or any way for a candidate to return to a submitted application
+- Candidate accounts or sign-in of any kind — the status page needs neither
 - A public index of postings, a browsable careers page, or role search
-- Outreach, acknowledgements, rejection messages
-- Interview scheduling
+- Any inbound channel: replies reach the organisation's own inbox and never Ziphyre (Non-Goal 10)
+- Calendar integration — Ziphyre carries a booking link and does not read or write a calendar (Non-Goal 5, PN-004 Option C)
+- Automatic messages of any kind beyond the application-received confirmation
+- Delivery, open or click tracking — Ziphyre reports what it sent, not what arrived
 - Any access level other than a single Admin
 - Custom form fields per posting
 - Custom scoring weights per opening
@@ -87,7 +93,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 | Next | Verifying the candidate's email address, most likely by one-time code (see PN-002 Decision 3) |
 | Next | Custom weights per opening, and custom form fields |
 | Later | Hiring Team Member and External Recruiter access (ProductContext §7) |
-| Later | Candidate status transparency (Pillar 6) |
+| ~~Later~~ | ~~Candidate status transparency (Pillar 6)~~ — delivered in Draft 9, FR-119 – FR-125 |
 | Later | Usage analytics and hiring-outcome measurement — Roadmap Theme C, once there is enough history to mean anything |
 
 ---
@@ -255,6 +261,63 @@ Validated against the seven real Chartered Accountant applicants and the human r
 **FR-85** Meera can configure more than one provider at once and set the order they are tried in. Screening uses the first that succeeds; if it fails, the next is tried automatically. Removing a provider and reordering the chain are both available without re-entering keys.
 **FR-86** Where a fallback provider produced a result, that is stated plainly at the point of use — never silent. The admin asked for one model and got another, and must be able to see that. Every score continues to record the model that actually produced it (**FR-49**), which matters more under fallback, not less: with automatic failover the model behind any given score is no longer predictable in advance.
 **FR-83** Where no valid key is present, screening cannot run; new applications are flagged Needs manual review with that reason stated, and the settings screen says so plainly.
+
+---
+
+## 6A. Candidate communications
+
+*Added Draft 9 (PN-004). Ziphyre's first outbound surface — and the first thing it does that cannot be undone.*
+
+### Sending
+
+**FR-106** Meera can send a message to one candidate, or to several selected candidates in a single action, from the pipeline she is already working in. Selection and filters carry into the send exactly as they do into an export (**FR-74**).
+**FR-107** The message kinds are: **interview invite**, **outcome — not moving forward**, and **general update**. Each has its own template.
+**FR-108** Sending always requires an explicit confirmation that names the number of real people about to be emailed, and for an outcome message says that it cannot be unsent.
+**FR-109** **Nothing is sent automatically except the application-received message (FR-117).** No stage change, score, or filter causes an email on its own. A person chooses every outbound message — Non-Goal 2 applies to communication as much as to outcomes.
+**FR-110** Moving a candidate to Rejected offers to send the outcome message in the same action. The offer is skippable, exactly as disposition is (**FR-57**); declining leaves the candidate un-notified and the status page unchanged.
+**FR-111** A send that fails is shown as failed against the candidate it was meant for, with the reason in plain language, and can be retried. A failure is never silent and never leaves the pipeline looking as though the message went.
+**FR-112** Ziphyre reports what it *sent*, never what was *delivered* or read. Nothing in the product claims knowledge it does not have.
+
+### The sending identity
+
+**FR-113** One sending identity per organisation: an email address and an app password, entered once. It is stored encrypted, shown afterwards only by its last four characters, and never returned to the browser — the same handling as provider keys (**FR-84**).
+**FR-114** Credentials are verified against the mail server before they are saved. Credentials that cannot authenticate are refused at the point of entry, not discovered at the point of sending.
+**FR-115** Every message carries a **Reply-To** of the organisation's own address, so a candidate's reply reaches a real inbox. Ziphyre never receives, stores, threads or displays a reply — it is not an inbox (Non-Goal 10).
+**FR-116** Where no sending identity is configured, the send controls say so plainly and offer the way to fix it, rather than failing at the moment of use.
+
+### The application-received message
+
+**FR-117** On submitting an application the candidate is emailed a confirmation containing their status link. **This is the only message Ziphyre sends without a person choosing to send it**, and it is the direct expression of Principle 4 — the candidate can find out where they stand without asking anyone.
+**FR-118** If that message cannot be sent, the application is still accepted and screened. Intake never depends on mail working.
+
+### The status page
+
+**FR-119** Every application has a status page at an unguessable link, requiring no login and no account. It is the same shape of public surface as the application page (**FR-87**).
+**FR-120** The page shows the role applied for, the organisation, the date applied, and the current status in candidate-facing language. It shows nothing else.
+**FR-121** The page never shows a score, a component rating, a must-have result, assessment text, a disposition, or any internal note — not as an option, not as a setting (Non-Goal 9).
+**FR-122** Internal stages are mapped to candidate-facing wording, never shown raw: New and Screened read as *Received — under review*; Shortlisted reads as *Shortlisted*; On Hold reads as *Under review*, because "on hold" is an internal category and telling a candidate they are on hold is worse than telling them nothing.
+**FR-123** **A rejection appears on the status page only after the outcome message has been sent.** Until then the page continues to read as under review. The page never tells a candidate something worse than what they have already been told, and no candidate learns they were rejected from a page refresh before any person chose to tell them.
+**FR-124** There is exactly one status link per application, issued once and never reissued. The outcome message re-includes the same link rather than creating a second one: a link already in the candidate's inbox that keeps saying "under review" after a rejection is a lie the product goes on telling.
+**FR-125** The status link stops working when the application's data is purged (tech spec §11). A public URL outliving the data it describes would break the retention promise made on the application page.
+
+### Templates
+
+**FR-126** Meera can edit the wording of every message template, and preview it filled with a real candidate's values before sending or saving.
+**FR-127** Templates offer only these variables: candidate name, role title, organisation name, booking link, status link. **There is no score variable, no assessment variable and no internal-note variable** — a variable is a setting, and Non-Goal 9 refuses the setting.
+**FR-128** Any template can be restored to its default wording in one action.
+**FR-129** Saving a template creates a new version rather than overwriting the previous one, and a sent message records which version produced it. What was actually said to a candidate remains recoverable after the template changes.
+
+### Interview booking
+
+**FR-130** Meera can store a booking link — her existing calendar scheduling page — which the interview invite includes. Ziphyre carries the link; it does not host the booking, read a calendar, or know whether a slot was taken (Non-Goal 5).
+**FR-131** A booking link is set per organisation, and may be overridden per opening where a role is scheduled by someone else.
+**FR-132** An interview invite cannot be sent without a booking link present, and says so rather than sending an invitation to nowhere.
+
+### The Communications page
+
+**FR-133** A **Communications** page lists every message sent, showing the candidate, the role, the kind of message, when it was sent, and whether it failed. It is where a send is confirmed, found, or retried.
+**FR-134** The templates, the sending identity and the booking link are configured on that page. Sending itself stays in the pipeline, because the decision to contact a candidate is made while looking at them.
+**FR-135** The page shows outbound messages only. It has no inbox, no threads and no replies (Non-Goal 10).
 
 ---
 
@@ -460,6 +523,38 @@ The posting name is Meera's own label ("Finance hiring, August") and is never sh
 | Privacy line | This file contains candidates' personal information. It's for internal use — once downloaded, it's outside Ziphyre. |
 | Export marker (in file) | Ziphyre — internal use only. Contains personal data. Exported {date} by {name}. |
 | Button | Download |
+
+### Candidate communications
+
+| Element | Copy |
+|---|---|
+| Send button | Send message |
+| Message kinds | Interview invite · Not moving forward · General update |
+| Confirm send (one) | Send to {name}? |
+| Confirm send (batch) | Send to {n} candidates? |
+| Outcome warning | This tells {n} {people} they aren't moving forward. It can't be unsent. |
+| Offer on reject | Also send the outcome now? |
+| Skip | Not now |
+| No sender set up | Add a sending address before you can email candidates. |
+| No booking link | Add a booking link before sending an interview invite. |
+| Send failed | Couldn't send to {name} — {reason}. Nothing was delivered. |
+| Retry | Try again |
+| Sent, honestly | Sent {date}. Ziphyre can't tell you whether it was opened. |
+| Reply note | Replies go to {address}, not to Ziphyre. |
+
+### The status page — what the candidate sees
+
+| Element | Copy |
+|---|---|
+| Heading | Your application |
+| Sub | {role} at {organisation} · Applied {date} |
+| Received / Screened | **Received.** Your application is with the team. |
+| Shortlisted | **Shortlisted.** The team will be in touch about next steps. |
+| On hold | **Under review.** |
+| Not moving forward | **Not moving forward.** Thank you for the time you gave this application. |
+| Retention line | Your details are kept until {date} and then deleted. |
+| Expired link | This link has expired and the application data has been deleted. |
+| Never shown | Any score, rating, must-have result, assessment text, disposition or internal note |
 
 ### Home overview
 
@@ -830,6 +925,7 @@ No dark launch and no admin-only preview: there is no existing product to hide t
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 9 | 28 Aug 2026 | **Candidate communications added (PN-004) — FR-106 – FR-135**, and with them Priya becomes a served persona for the first time. Ziphyre gains its first outbound surface and its second public one. Four decisions are load-bearing. **Mail goes over SMTP with an app password, not OAuth** — the Gmail API's `gmail.send` is a restricted scope, and PN-002 established that one sensitive scope re-gates the entire consent screen, admin sign-in included. **Ziphyre carries a booking link rather than integrating a calendar**, which is Non-Goal 5 restated as a build. **Nothing sends automatically except the application-received message** (FR-109), because Non-Goal 2 applies to communication as much as to outcomes. And **a rejection reaches the status page only after the outcome has been sent** (FR-123), so no candidate learns they were rejected from a page refresh before a person chose to tell them — with exactly one status link per application (FR-124), because a second link would leave the first one saying "under review" forever. Templates are editable where the screening prompt deliberately is not: a template decides how someone is spoken to, not how they are judged — but it carries no score variable, since a variable is a setting and Non-Goal 9 refuses the setting |
 | Draft 8 | 27 Aug 2026 | No requirements changed; records **FR-56 – FR-60 as built and verified against the real CA pipeline**, and two readings taken during implementation where the spec left room. **FR-57's "skippable" is a button, not an implication** — the disposition dialog carries an explicit Skip alongside the action, because a form that merely *looks* optional gets filled in anyway, and a pile of invented reasons is worse than none. **Disposition is scoped to On hold and Rejected in the data, not only the UI** — FR-58's list answers "why not", which is not a question Shortlisted asks, so recording one there would put unanswerable values in FR-71's export. Consequently Shortlist and "move back" complete on the click with no dialog: a confirm step with nothing to confirm teaches people to dismiss confirm steps. Also notes that **FR-66's stage filter only becomes meaningful now** — until stage transitions existed every application read `Screened`, so the filter would have been a control with one setting |
 | Draft 7 | 27 Aug 2026 | **FR-101 – FR-105 added**: the home screen gains an organisation-wide summary above the per-opening list — active postings, active openings, total applications, and the full five-stage funnel. Two rules exist to keep the numbers honest rather than merely present. **FR-102** requires the funnel to sum to the total, and **FR-103** keeps "needs manual review" out of the funnel because it is a screening status, not a stage — an application carrying it is already counted at its own stage, so listing it as a sixth step would double-count and break the arithmetic. **FR-104** scopes the summary to active postings, since a total that only ever grows stops carrying information. **FR-105** restates §4's exclusion of trend and time-based measures at the one screen most likely to attract them |
 | Draft 6 | 23 Aug 2026 | **Google intake removed; Ziphyre hosts the application page itself (PN-002).** Retires FR-1–FR-4, FR-19–FR-29, FR-36 and FR-62–FR-65 — the connection step, the form template, dropdown matching, the Unmatched concept, the resubmission merge, and everything describing a Sheet we no longer read. Numbers are retired in place rather than reused, so the tech spec's traceability table stays honest. Adds **FR-87 – FR-100**: a per-posting application link, every field and the CV required, PDF/DOCX at 1 MB, one application per opening refused rather than merged, and immediate confirmation with screening running afterwards. Three consequences recorded rather than glossed: email is no longer verified, so identity is trusted rather than proven; the product gains its first public surface; and DOC uploads are now refused outright rather than accepted and failed, since screening cannot read them. Flow A loses its entire setup phase and Flow B drops from eleven steps to eight — the point of the change |

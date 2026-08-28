@@ -1,6 +1,6 @@
 # Product Note 004 — Candidate Communications
 
-**Status:** Proposed, 28 August 2026
+**Status:** Decisions taken 28 August 2026. Functional spec next.
 **Related:** ProductContext Principles 4, 5, 7, 9, 10 · Non-Goals 2, 5, 9,
 10 · PN-002 (why Google integration was removed) · FR-87 – FR-100 ·
 Tech spec §11 (retention)
@@ -241,35 +241,50 @@ version rather than an overwrite.
 
 ---
 
-## Open decisions
+## Decisions taken — 28 August 2026
 
-**A. Scheduling model.** A (carry a booking link), B (Ziphyre owns slots),
-or C (Google Calendar OAuth)?
-*Recommendation: A.* C should not be chosen without explicitly reversing
-PN-002, because it re-blocks the whole product, not just scheduling.
+**A. Scheduling — Gmail SMTP for mail, a pasted booking link for slots.**
+No OAuth anywhere. Two clarifications that were genuinely confusing and
+are worth keeping written down:
 
-**B. Rejection on the status page.** Immediately on stage change, or only
-after the outcome email is sent?
-*Recommendation: after sending.* Keeps a person in the loop for the one
-message that hurts.
+- **SMTP is not OAuth.** Sending mail uses an app password against
+  `smtp.gmail.com:587` — the same thing you would type into a mail
+  client. Google performs no review of it, requests no scopes, and shows
+  no consent screen. The Gmail *API* (`gmail.send`) is the OAuth path and
+  is deliberately not used.
+- **The candidate never signs in to anything.** The OAuth in Option C
+  would have been the *admin* granting Ziphyre access to *their* calendar.
+  The reason to refuse it was never the candidate's experience; it is that
+  one sensitive scope re-gates the whole consent screen, and with it admin
+  sign-in, screening and everything else.
 
-**C. Where does the sender identity live?** One Gmail per organisation, or
-per user?
-*Recommendation: per organisation*, matching how provider keys already
-work. Per user multiplies setup by every admin for no benefit at this size.
+**B and D. One status link, sent automatically, revealing rejection only
+after the outcome is sent.**
 
-**D. Does the status link go out automatically with the existing
-application confirmation?** FR-96 already sends nothing — the candidate
-just sees a confirmation screen. Adding a "here's your link" email at
-submission is the highest-value, lowest-risk use of this whole feature.
-*Recommendation: yes*, and it may be worth building first.
+The link goes out with the application-received email — the only automatic
+message in the product. It shows Received, Under review and Shortlisted as
+they happen, because none of those can wound. It does **not** reveal a
+rejection until the admin has actually sent the outcome, at which point the
+same page flips.
+
+**One URL, not two.** A second "rejection link" was considered and
+rejected: the original link is already in the candidate's inbox, so a page
+that kept saying *"under review"* after a rejection would be a lie the
+product goes on telling. One link whose content changes has one truth in
+it. The outcome email simply re-includes the link the candidate already
+has.
+
+The rule, in one sentence: **the page never tells a candidate something
+worse than what they have already been told.**
+
+**C. Sender identity is per organisation**, matching how provider keys
+already work.
 
 ---
 
 ## Next steps
 
-1. Decide A–D — **A materially changes the tech spec**, so it should be
-   settled before that document is written.
+1. ~~Decide A–D.~~ Done — see above.
 2. Functional spec gains FR-106 onward for sending, the status page,
    templates and the outbox.
 3. Tech spec gains the transport interface, the `send_email` job kind,
