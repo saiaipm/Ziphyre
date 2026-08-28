@@ -1,5 +1,6 @@
 import "server-only";
 import mammoth from "mammoth";
+import { ensureDomMatrix } from "./dom-matrix-polyfill";
 
 /**
  * **`pdf-parse` is imported lazily, and that is load-bearing.**
@@ -17,10 +18,12 @@ import mammoth from "mammoth";
  * inherited the failure, on a route that never touches a PDF. Deferring
  * the import confines the cost to the code path that actually parses one.
  *
- * This does NOT make PDF parsing work on Vercel; it makes everything
- * else stop depending on it. See `extractPdfText` for that.
+ * The polyfill is installed before the import, not after: pdfjs builds
+ * `SCALE_MATRIX` at module scope, so by the time the import resolves it
+ * is already too late.
  */
 async function loadPdfParse() {
+  ensureDomMatrix();
   const { PDFParse } = await import("pdf-parse");
   return PDFParse;
 }
