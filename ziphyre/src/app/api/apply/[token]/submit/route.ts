@@ -6,6 +6,8 @@ import { runQueuedJobs } from "@/lib/jobs/runner";
 import { MAX_CV_BYTES, ALLOWED_CV_MIME, SubmitSchema } from "@/lib/apply/schema";
 import { queueMessage, statusUrl } from "@/lib/mail/send";
 import {
+
+
   CV_BUCKET,
   clientIp,
   getPublicPosting,
@@ -15,6 +17,19 @@ import {
   recordAttempt,
   verifyUploadedObject,
 } from "@/lib/apply/server";
+
+/**
+ * Screening is a storage fetch, a PDF parse and a model call, pumped by
+ * `after()` from this route's Server Actions. Vercel's default cap is
+ * 10 seconds, which killed the function mid-job and left the row
+ * `running` with nothing logged — a timeout is not an error, so it
+ * appears as a job that simply never finishes.
+ *
+ * 60s is the Hobby ceiling. It is a cap, not a target: the work still
+ * needs to move to a queue that survives a request, which §10 already
+ * says about `build_export` and applies here too.
+ */
+export const maxDuration = 60;
 
 /**
  * Step 3 of tech spec §5.2. Public.
