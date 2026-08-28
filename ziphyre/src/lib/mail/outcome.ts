@@ -11,6 +11,7 @@ export type { OfferKind, OutcomeRecipient };
 const TEMPLATE_FOR: Record<OfferKind, MessageKind> = {
   reject: "outcome_rejected",
   reversal: "outcome_reversed",
+  invite: "interview_invite",
 };
 
 /**
@@ -46,7 +47,7 @@ type RecipientRow = {
   status_token: string | null;
   outcome_sent_at: string | null;
   candidate: { full_name: string | null; email: string | null } | null;
-  opening: { title: string } | null;
+  opening: { title: string; booking_url: string | null } | null;
 };
 
 async function loadRecipientRows(
@@ -58,7 +59,7 @@ async function loadRecipientRows(
     .select(
       `id, status_token, outcome_sent_at,
        candidate:candidate_id (full_name, email),
-       opening:opening_id (title)`,
+       opening:opening_id (title, booking_url)`,
     )
     .in("id", applicationIds);
 
@@ -76,12 +77,18 @@ function realEmail(email: string | null | undefined): string | null {
   return email && !email.endsWith("@ziphyre.internal") ? email : null;
 }
 
-function toRecipient(row: RecipientRow): OutcomeRecipient {
+function toRecipient(
+  row: RecipientRow,
+  orgBookingUrl: string | null,
+): OutcomeRecipient {
   return {
     applicationId: row.id,
     candidateName: row.candidate?.full_name ?? "This candidate",
     email: realEmail(row.candidate?.email),
     alreadySent: row.outcome_sent_at !== null,
+    // FR-131: the opening's own link wins, because a role scheduled by
+    // someone else needs their calendar, not the organisation's.
+    bookingLink: row.opening?.booking_url ?? orgBookingUrl ?? null,
   };
 }
 
@@ -98,7 +105,7 @@ export async function getOutcomeSendPreview(
   const configured = Boolean(settings?.verifiedAt);
 
   const rows = await loadRecipientRows(applicationIds);
-  const recipients = rows.map(toRecipient);
+  const recipients = rows.map((r) => toRecipient(r, settings?.bookingUrl ?? null));
 
   let sample: OutcomeSendPreview["sample"] = null;
   const only = rows.length === 1 ? rows[0] : null;
@@ -109,6 +116,8 @@ export async function getOutcomeSendPreview(
       roleTitle: only.opening?.title ?? "the role",
       organisationName,
       statusLink: only.status_token ? statusUrl(only.status_token) : "",
+      bookingLink:
+        only.opening?.booking_url ?? settings?.bookingUrl ?? "",
     };
     sample = {
       subject: render(template.subject, vars),
@@ -157,6 +166,9 @@ export async function queueOutcomeMessages(input: {
   };
   if (input.applicationIds.length === 0) return result;
 
+  const orgBookingUrl =
+    (await getMailSettings(input.organizationId))?.bookingUrl ?? null;
+
   let rows: RecipientRow[];
   try {
     rows = await loadRecipientRows(input.applicationIds);
@@ -177,7 +189,7 @@ export async function queueOutcomeMessages(input: {
     // snapshot could be minutes old, and the cost of being wrong is a
     // second rejection email to someone already rejected — or, running
     // the other way, an "update" to someone who was never told anything.
-    if (!isEligible(toRecipient(row), kind)) {
+    if (!isEligible(toRecipient(row, orgBookingUrl), kind)) {
       result.alreadySent.push(name);
       continue;
     }
@@ -193,6 +205,9 @@ export async function queueOutcomeMessages(input: {
         organisationName: input.organisationName,
         // FR-124: the same link they already have, never a new one.
         statusLink: row.status_token ? statusUrl(row.status_token) : "",
+        // FR-130/131, resolved per application rather than per batch:
+        // a batch can span openings with different links.
+        bookingLink: row.opening?.booking_url ?? orgBookingUrl ?? "",
       },
       sentBy: input.sentBy,
     });

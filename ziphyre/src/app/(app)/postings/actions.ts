@@ -949,6 +949,41 @@ export async function changeApplicationStage(input: {
 }
 
 /**
+ * FR-107. Sending an interview invite on its own, with no stage change.
+ *
+ * Separate from `changeApplicationStage` because the common case is a
+ * candidate who was shortlisted days ago — the decision to talk to
+ * someone and the decision to move them are not the same decision, and
+ * forcing a stage change to send an invite would write a false history
+ * row (FR-59) for a move that did not happen.
+ */
+export async function sendInterviewInvites(input: {
+  applicationIds: string[];
+  postingId: string;
+  openingId: string;
+}): Promise<ActionResult<OutcomeSendResult>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+  if (input.applicationIds.length === 0) {
+    return { ok: false, error: "Nothing selected." };
+  }
+
+  const outcome = await queueOutcomeMessages({
+    organizationId: session.organization.id,
+    organisationName: session.organization.name,
+    applicationIds: input.applicationIds,
+    sentBy: session.userId,
+    kind: "invite",
+  });
+
+  if (outcome.queued > 0) pumpJobsAfterResponse(["send_message"]);
+  revalidatePath(`/postings/${input.postingId}/openings/${input.openingId}`);
+  revalidatePath("/communications");
+
+  return { ok: true, data: outcome };
+}
+
+/**
  * FR-110 and FR-116. What the reject dialog needs before it can offer
  * anything: whether a sending identity exists, who among the selection
  * can actually be reached, and — for a single candidate — the words

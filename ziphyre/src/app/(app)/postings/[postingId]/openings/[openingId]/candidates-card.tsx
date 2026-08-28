@@ -53,6 +53,7 @@ import {
   SelectCheckbox,
   StageBadge,
   StageHistoryPanel,
+  InviteDialog,
   StageMoveDialog,
   type PendingMove,
 } from "./stage-controls";
@@ -102,6 +103,11 @@ export function CandidatesCard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [move, setMove] = useState<PendingMove | null>(null);
   const [moving, setMoving] = useState(false);
+  /** FR-107's standalone send, for someone shortlisted days ago. */
+  const [inviting, setInviting] = useState<{
+    ids: string[];
+    name: string | null;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sorting lives inside applyFilters, so the server's default ordering
@@ -158,7 +164,12 @@ export function CandidatesCard({
               (a) => a.currentStage === "rejected" && a.outcomeSentAt !== null,
             )
           ? "reversal"
-          : null;
+          : // FR-107. Shortlisting is the moment you decide to talk to
+            // someone, so the invite is offered here — unticked, like
+            // every other send.
+            toStage === "shortlisted"
+            ? "invite"
+            : null;
 
     const pendingMove: PendingMove = {
       applicationIds,
@@ -481,6 +492,12 @@ export function CandidatesCard({
                         selected={selected.has(app.id)}
                         onSelectedChange={(on) => toggleSelected(app.id, on)}
                         onMove={(stage) => requestMove([app.id], stage)}
+                        onInvite={() =>
+                          setInviting({
+                            ids: [app.id],
+                            name: app.candidateName ?? "this candidate",
+                          })
+                        }
                         onReassigned={async () => {
                           const refreshed = await refreshApplications(openingId);
                           if (refreshed.ok) setApplications(refreshed.data);
@@ -503,6 +520,21 @@ export function CandidatesCard({
         )}
       </div>
 
+      {inviting && (
+        <InviteDialog
+          applicationIds={inviting.ids}
+          singleName={inviting.name}
+          postingId={postingId}
+          openingId={openingId}
+          open
+          onOpenChange={(v) => !v && setInviting(null)}
+          onSent={async () => {
+            const refreshed = await refreshApplications(openingId);
+            if (refreshed.ok) setApplications(refreshed.data);
+          }}
+        />
+      )}
+
       <StageMoveDialog
         move={move}
         saving={moving}
@@ -524,6 +556,7 @@ function ApplicationRow({
   selected,
   onSelectedChange,
   onMove,
+  onInvite,
   onReassigned,
   busy,
 }: {
@@ -534,6 +567,7 @@ function ApplicationRow({
   selected: boolean;
   onSelectedChange: (on: boolean) => void;
   onMove: (stage: StageKey) => void;
+  onInvite: () => void;
   onReassigned: () => void;
   busy: boolean;
 }) {
@@ -574,6 +608,7 @@ function ApplicationRow({
             <RowStageMenu
               currentStage={app.currentStage}
               onMove={onMove}
+              onInvite={onInvite}
               disabled={busy}
             />
             <Button
@@ -695,6 +730,7 @@ function ApplicationRow({
           <RowStageMenu
             currentStage={app.currentStage}
             onMove={onMove}
+            onInvite={onInvite}
             disabled={busy}
           />
         </TableCell>
@@ -791,6 +827,10 @@ function ApplicationRow({
                 onMove={(stage) => {
                   setHistoryKey((k) => k + 1);
                   onMove(stage);
+                }}
+                onInvite={() => {
+                  setOpen(false);
+                  onInvite();
                 }}
                 disabled={busy}
               />

@@ -21,7 +21,7 @@
  * change reaches the people it affects.
  */
 
-export type OfferKind = "reject" | "reversal";
+export type OfferKind = "reject" | "reversal" | "invite";
 
 export type OutcomeRecipient = {
   applicationId: string;
@@ -30,9 +30,27 @@ export type OutcomeRecipient = {
   email: string | null;
   /** Whether the outcome message has actually gone (FR-123's gate). */
   alreadySent: boolean;
+  /**
+   * FR-130/131 — the opening's own link, else the organisation's. Null
+   * when neither is set, which is what makes an invite unsendable
+   * (FR-132): an invitation to nowhere is worse than no invitation.
+   */
+  bookingLink: string | null;
 };
 
 export function isEligible(r: OutcomeRecipient, kind: OfferKind): boolean {
   if (!r.email) return false;
-  return kind === "reject" ? !r.alreadySent : r.alreadySent;
+  switch (kind) {
+    case "reject":
+      return !r.alreadySent;
+    case "reversal":
+      return r.alreadySent;
+    // An invite has no "already sent" gate — a second one is a
+    // legitimate thing to send when a slot falls through or the first
+    // goes unanswered, and FR-108's confirmation is what stops it
+    // happening by accident. FR-132 is the real constraint: no booking
+    // link, no invite.
+    case "invite":
+      return r.bookingLink !== null;
+  }
 }

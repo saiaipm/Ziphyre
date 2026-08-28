@@ -42,6 +42,7 @@ import {
   loadReassignTargets,
   loadStageHistory,
   reassignApplication,
+  sendInterviewInvites,
 } from "../../../actions";
 
 // ---------------------------------------------------------------------------
@@ -352,7 +353,7 @@ export function StageMoveDialog({
  * one thing in this product that reaches a stranger and cannot be
  * withdrawn.
  */
-function OutcomeOffer({
+export function OutcomeOffer({
   offer,
   preview,
   error,
@@ -419,7 +420,13 @@ function OutcomeOffer({
   // Running the other way, "already told" is the qualification rather
   // than the disqualification — so the excluded set inverts too.
   const excludedByGate = preview.recipients.filter((r) =>
-    offer === "reject" ? r.alreadySent : !r.alreadySent,
+    offer === "reject"
+      ? r.alreadySent
+      : offer === "reversal"
+        ? !r.alreadySent
+        : // FR-132: an invite is excluded by a missing booking link, not
+          // by anything about the candidate.
+          Boolean(r.email) && !r.bookingLink,
   );
   const unreachable = preview.recipients.filter(
     (r) => !r.email && !excludedByGate.includes(r),
@@ -428,11 +435,13 @@ function OutcomeOffer({
   if (!canOffer) {
     return (
       <div className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground">
-        {excludedByGate.length > 0 && unreachable.length === 0
-          ? offer === "reject"
-            ? "Already told the outcome — there is nothing left to send."
-            : "They were never told they had been rejected, so there is nothing to correct."
-          : "No email address on file, so this can only be recorded, not sent. Candidates added by CV upload have no address."}
+        {offer === "invite" && preview.recipients.some((r) => r.email && !r.bookingLink)
+          ? "No booking link is set, so an invite would point nowhere. Add one under Communications, or on this opening's Setup tab."
+          : excludedByGate.length > 0 && unreachable.length === 0
+            ? offer === "reject"
+              ? "Already told the outcome — there is nothing left to send."
+              : "They were never told they had been rejected, so there is nothing to correct."
+            : "No email address on file, so this can only be recorded, not sent. Candidates added by CV upload have no address."}
       </div>
     );
   }
@@ -458,10 +467,15 @@ function OutcomeOffer({
                 Email {emailableCount === 1 ? "them" : `${emailableCount} of them`}{" "}
                 the outcome
               </>
-            ) : (
+            ) : offer === "reversal" ? (
               <>
                 Tell {emailableCount === 1 ? "them" : `${emailableCount} of them`}{" "}
                 the decision changed
+              </>
+            ) : (
+              <>
+                Send {emailableCount === 1 ? "them" : `${emailableCount} of them`}{" "}
+                the interview invite
               </>
             )}
           </span>
@@ -470,7 +484,9 @@ function OutcomeOffer({
             Sent from {preview.fromEmail}. <strong>This cannot be unsent.</strong>{" "}
             {offer === "reject"
               ? "Their status page shows the decision only once it has gone."
-              : "They were sent a rejection that no longer holds; their status page has already changed."}
+              : offer === "reversal"
+                ? "They were sent a rejection that no longer holds; their status page has already changed."
+                : "It carries your booking link so they can pick a time themselves."}
           </span>
         </span>
       </label>
@@ -482,7 +498,9 @@ function OutcomeOffer({
               {r.candidateName} —{" "}
               {offer === "reject"
                 ? "already told, not emailed again."
-                : "was never told, so nothing to correct."}
+                : offer === "reversal"
+                  ? "was never told, so nothing to correct."
+                  : "no booking link for this opening."}
             </li>
           ))}
           {unreachable.map((r) => (
@@ -566,10 +584,13 @@ export function BatchBar({
 export function RowStageMenu({
   currentStage,
   onMove,
+  onInvite,
   disabled,
 }: {
   currentStage: StageKey;
   onMove: (stage: StageKey) => void;
+  /** FR-107, for someone already shortlisted — no stage change. */
+  onInvite?: () => void;
   disabled: boolean;
 }) {
   const options = ADMIN_TARGET_STAGES.filter((s) => s !== currentStage);
@@ -600,6 +621,18 @@ export function RowStageMenu({
             {STAGE_ACTION_LABELS[stage]}
           </DropdownMenuItem>
         ))}
+        {/* Offered only where it makes sense to talk to someone. It is
+            not a stage change, so it sits below the moves. */}
+        {onInvite && currentStage === "shortlisted" && (
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onInvite();
+            }}
+          >
+            Send interview invite
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -883,5 +916,149 @@ export function ReassignDialog({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Interview invite — FR-107, FR-130 – FR-132
+// ---------------------------------------------------------------------------
+
+/**
+ * Sending an invite on its own, with no stage change.
+ *
+ * The shortlist dialog offers this too, but the common case is someone
+ * shortlisted days ago: deciding to talk to a candidate and deciding to
+ * move them are different decisions, and making the invite depend on a
+ * move would write a stage-history row (FR-59) for a move that never
+ * happened.
+ */
+export function InviteDialog({
+  applicationIds,
+  singleName,
+  postingId,
+  openingId,
+  open,
+  onOpenChange,
+  onSent,
+}: {
+  applicationIds: string[];
+  singleName: string | null;
+  postingId: string;
+  openingId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSent: () => void;
+}) {
+  const [preview, setPreview] = useState<OutcomeSendPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const idKey = applicationIds.join(",");
+
+  useEffect(() => {
+    if (!open || idKey === "") return;
+    let cancelled = false;
+    loadOutcomeSendPreview(idKey.split(","), "invite")
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok) setPreview(result.data);
+        else setError(result.error);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "The check didn't complete.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, idKey]);
+
+  const emailable =
+    preview?.recipients.filter((r) => isEligible(r, "invite")) ?? [];
+  const canSend = Boolean(preview?.configured) && emailable.length > 0;
+
+  async function onSend() {
+    setSending(true);
+    const result = await sendInterviewInvites({
+      applicationIds,
+      postingId,
+      openingId,
+    });
+    setSending(false);
+
+    if (!result.ok) {
+      toast.error("Couldn't send", { description: result.error });
+      return;
+    }
+    const { queued, failed } = result.data;
+    if (queued > 0) {
+      toast.success(
+        queued === 1 ? "Invite on its way" : `${queued} invites on their way`,
+        { description: "They pick a time from your booking link." },
+      );
+    }
+    if (failed.length > 0) {
+      toast.error(`Couldn't queue ${failed.length}`, {
+        description: failed.join(", "),
+      });
+    }
+    onOpenChange(false);
+    setConfirmed(false);
+    onSent();
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!sending) {
+          onOpenChange(v);
+          if (!v) setConfirmed(false);
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            Interview invite —{" "}
+            {singleName ?? `${applicationIds.length} candidates`}
+          </DialogTitle>
+          <DialogDescription>
+            No stage changes. Ziphyre carries your booking link; it does not
+            hold the calendar or know whether a slot was taken.
+          </DialogDescription>
+        </DialogHeader>
+
+        <OutcomeOffer
+          offer="invite"
+          preview={preview}
+          error={error}
+          emailableCount={emailable.length}
+          canOffer={canSend}
+          checked={confirmed}
+          onCheckedChange={setConfirmed}
+          disabled={sending}
+        />
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={sending}
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button disabled={!confirmed || !canSend || sending} onClick={onSend}>
+            {sending ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            ) : null}
+            {emailable.length === 1
+              ? "Send the invite"
+              : `Send ${emailable.length} invites`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
