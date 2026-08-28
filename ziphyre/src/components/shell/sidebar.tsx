@@ -47,12 +47,15 @@ const collapseStore = {
 const primaryNav = [
   { href: "/", label: "Home", icon: LayoutDashboard, exact: true },
   { href: "/postings", label: "Postings", icon: Briefcase, exact: false },
+  // An outbox is something you check, not something you configure, so it
+  // sits with the working surfaces rather than under Settings — FR-133
+  // calls it the place a send is confirmed, found, or retried.
+  { href: "/communications", label: "Communications", icon: Mail, exact: false },
 ];
 
 const settingsNav = [
   { href: "/settings/organization", label: "Organization", icon: Building2 },
   { href: "/settings/screening", label: "Screening", icon: Sparkles },
-  { href: "/settings/communications", label: "Communications", icon: Mail },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean) {

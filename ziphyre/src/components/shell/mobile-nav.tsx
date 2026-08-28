@@ -16,11 +16,13 @@ import { Button } from "@/components/ui/button";
 const nav = [
   { href: "/", label: "Home" },
   { href: "/postings", label: "Postings" },
+  { href: "/communications", label: "Communications" },
 ];
 
+// `/settings/connections` was here until now — it 404s. The route went
+// with the Google intake path in M3.5 and this link was never updated.
 const settings = [
   { href: "/settings/organization", label: "Organization" },
-  { href: "/settings/connections", label: "Connections" },
   { href: "/settings/screening", label: "Screening" },
 ];
 
