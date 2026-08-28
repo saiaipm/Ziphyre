@@ -6,10 +6,72 @@ import { getSessionContext } from "@/lib/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { runQueuedJobs } from "@/lib/jobs/runner";
+import {
+  restoreTemplateDefault,
+  saveTemplate,
+  unknownVariables,
+} from "@/lib/mail/template-admin";
+import type { MessageKind } from "@/lib/mail/templates";
 
 type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+/**
+ * FR-126 to FR-129. Saving inserts a new version; restoring inserts the
+ * code default as one. Neither can overwrite, because
+ * `message_template` has no update policy — see `template-admin.ts`.
+ */
+export async function saveMessageTemplate(input: {
+  kind: MessageKind;
+  subject: string;
+  body: string;
+}): Promise<ActionResult<{ version: number }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  // FR-127, checked here as well as in the browser: the client-side
+  // warning is a courtesy, this is the rule.
+  const unknown = unknownVariables(input.subject, input.body);
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      error: `Unknown variable${unknown.length > 1 ? "s" : ""}: ${unknown
+        .map((v) => `{{${v}}}`)
+        .join(", ")}. These would be emailed as written.`,
+    };
+  }
+
+  const result = await saveTemplate({
+    organizationId: session.organization.id,
+    userId: session.userId,
+    kind: input.kind,
+    subject: input.subject,
+    body: input.body,
+  });
+  if (!result.ok) return result;
+
+  revalidatePath("/communications");
+  return { ok: true, data: { version: result.version } };
+}
+
+/** FR-128, in one action. */
+export async function restoreMessageTemplate(
+  kind: MessageKind,
+): Promise<ActionResult<{ version: number }>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+
+  const result = await restoreTemplateDefault({
+    organizationId: session.organization.id,
+    userId: session.userId,
+    kind,
+  });
+  if (!result.ok) return result;
+
+  revalidatePath("/communications");
+  return { ok: true, data: { version: result.version } };
+}
 
 /**
  * FR-111's retry. A failed message is put back on the queue rather than

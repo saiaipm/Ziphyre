@@ -3,8 +3,14 @@ import { redirect } from "next/navigation";
 import { getSessionContext } from "@/lib/session";
 import { getMailSettings } from "@/lib/mail/send";
 import { getOutbox } from "@/lib/mail/outbox";
+import {
+  getAllTemplatesForEditing,
+  getPreviewVars,
+} from "@/lib/mail/template-admin";
+import { MESSAGE_KINDS } from "@/lib/mail/templates";
 import { SenderForm } from "../settings/communications/sender-form";
 import { OutboxTable } from "./outbox-table";
+import { TemplateEditor } from "./template-editor";
 
 export const metadata: Metadata = { title: "Communications" };
 
@@ -21,9 +27,11 @@ export default async function CommunicationsPage() {
   const session = await getSessionContext();
   if (!session) redirect("/sign-in");
 
-  const [settings, outbox] = await Promise.all([
-    getMailSettings(session.organization.id),
+  const settings = await getMailSettings(session.organization.id);
+  const [outbox, templates, previewVars] = await Promise.all([
     getOutbox(),
+    getAllTemplatesForEditing(MESSAGE_KINDS),
+    getPreviewVars(session.organization.name, settings?.bookingUrl ?? null),
   ]);
 
   const failed = outbox.filter((m) => m.status === "failed").length;
@@ -53,6 +61,21 @@ export default async function CommunicationsPage() {
           </p>
         </div>
         <OutboxTable rows={outbox} />
+      </section>
+
+      <section className="space-y-3 border-t border-divider pt-8">
+        <div>
+          <h2 className="text-sm font-semibold">Templates</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The wording candidates receive. Saving keeps every earlier
+            version, and never changes a message already sent.
+          </p>
+        </div>
+        <TemplateEditor
+          templates={templates}
+          previewVars={previewVars}
+          bookingLinkSet={Boolean(previewVars.bookingLink)}
+        />
       </section>
 
       <section className="space-y-3 border-t border-divider pt-8">
