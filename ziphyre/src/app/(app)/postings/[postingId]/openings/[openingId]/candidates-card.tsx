@@ -146,13 +146,14 @@ export function CandidatesCard({
 
     const pendingMove: PendingMove = { applicationIds, toStage, singleName };
     if (stageTakesDisposition(toStage)) setMove(pendingMove);
-    else void commitMove(pendingMove, null, "");
+    else void commitMove(pendingMove, null, "", false);
   }
 
   async function commitMove(
     pendingMove: PendingMove,
     disposition: DispositionKey | null,
     note: string,
+    sendOutcome: boolean,
   ) {
     setMoving(true);
     const result = await changeApplicationStage({
@@ -160,6 +161,7 @@ export function CandidatesCard({
       toStage: pendingMove.toStage,
       disposition,
       note,
+      sendOutcome,
       postingId,
       openingId,
     });
@@ -171,7 +173,7 @@ export function CandidatesCard({
       return;
     }
 
-    const { moved, failed } = result.data;
+    const { moved, failed, outcome } = result.data;
     // Partial success is named rather than rounded up to success —
     // an admin who is told "20 moved" and finds 17 stops trusting the
     // number that matters most on this screen.
@@ -184,7 +186,30 @@ export function CandidatesCard({
         moved === 1
           ? `${pendingMove.singleName} → ${STAGE_LABELS[pendingMove.toStage]}`
           : `${moved} candidates → ${STAGE_LABELS[pendingMove.toStage]}`,
-        { description: "Your decision is recorded. Scores never change." },
+        {
+          description: outcome?.queued
+            ? `Your decision is recorded. ${
+                outcome.queued === 1
+                  ? "The outcome email is on its way."
+                  : `${outcome.queued} outcome emails are on their way.`
+              }`
+            : "Your decision is recorded. Scores never change.",
+        },
+      );
+    }
+
+    // FR-111: a message that could not even be queued is never left
+    // looking as though it went. Queueing failures are separate from the
+    // move, which succeeded — so they get their own toast, not a
+    // clause inside a success message.
+    if (outcome && outcome.failed.length > 0) {
+      toast.error(
+        outcome.failed.length === 1
+          ? "Couldn't queue one outcome email"
+          : `Couldn't queue ${outcome.failed.length} outcome emails`,
+        {
+          description: `${outcome.failed.join(", ")} — the move was recorded, but they have not been told.`,
+        },
       );
     }
 
@@ -458,8 +483,8 @@ export function CandidatesCard({
         move={move}
         saving={moving}
         onCancel={() => setMove(null)}
-        onConfirm={(disposition, note) => {
-          if (move) void commitMove(move, disposition, note);
+        onConfirm={(disposition, note, sendOutcome) => {
+          if (move) void commitMove(move, disposition, note, sendOutcome);
         }}
       />
     </section>
