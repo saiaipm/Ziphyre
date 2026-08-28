@@ -298,10 +298,14 @@ Migration `20260828090000_m7_communications.sql`, applied.
 4. **No real email has been sent yet.** The credentials verify, but the
    full send path is unproven end to end.
 
-**Start the next session here.** In order: finish the purge's M7
-obligations (Outstanding item 1), send one real test email to a personal
-address, then build sending from the pipeline. The first two are small and
-the second is the one that cannot be undone once it reaches a candidate.
+**Start the next session here.** In order: close the two gaps that only
+bite once real mail is flowing — the purge's M7 obligations (Outstanding
+item 1) and the un-reject contradiction (item 2) — then send one real test
+email to a personal address, then build sending from the pipeline.
+
+The first two are small, and both are far cheaper to fix now than after
+the first candidate has been emailed. The last is the one that cannot be
+undone once it reaches a real person.
 
 ---
 
@@ -390,12 +394,43 @@ the expired-link copy), so this is specifically the outbox and the token.
 **And §11's rule applies: the purge job must be re-tested against a
 fixture after the change.**
 
-**2. No real email has been sent end to end.** Credentials verify against
+**2. Un-rejecting a candidate after the outcome was sent leaves them
+contradicted, silently.** Reject → send the outcome → move them back to
+Screened or Shortlisted, and the status page reverts to "Received" or
+"Shortlisted" immediately — while the rejection email still sits in their
+inbox. Nothing tells them the decision changed; they would only find out
+by refreshing a link they may never open again.
+
+This is the **inverse of the case PN-004 designed for.** That note's rule
+was "the page never tells a candidate something worse than what they have
+already been told", and the guard was built one-way. Better news
+delivered silently is not harmful the way worse news is, but it is
+confusing, it reads like a mistake, and it can raise hope nobody meant to
+raise.
+
+**It compounds with an edge case:** `outcome_sent_at` is set once and
+never cleared, and is only consulted while the stage *is* `rejected`. So
+after an un-reject, a later re-rejection flips the page to "Not moving
+forward" **instantly, with no second email and no human gate** — the
+protection FR-123 exists to provide is spent after the first use.
+
+Two small fixes, both worth doing together before the first real send:
+- **Moving off Rejected after an outcome was sent should offer to send an
+  update.** The `general_update` template exists for exactly this, and
+  Principle 4 — "every state change reaches the people it affects" —
+  says a reversal qualifies.
+- **Clear `outcome_sent_at` on that move**, so the gate re-arms and any
+  future rejection needs a fresh, deliberate send.
+
+Neither is large. Both only bite once real mail is going out, which is
+precisely the window this is being written in.
+
+**3. No real email has been sent end to end.** Credentials verify against
 Gmail, but nothing has actually been delivered. The first genuine send is
 the real test of the transport, and it should be to a personal address
 before it is to a candidate.
 
-**3. A screening's "used a fallback" note is computed against today's
+**4. A screening's "used a fallback" note is computed against today's
 provider order, so it lies after a reorder.** `getApplicationsForOpening`
 in `src/lib/applications.ts` derives `usedFallback` by comparing the stored
 provider against the *current* chain. The 27 Aug reorder therefore made
@@ -406,7 +441,7 @@ which model judged a candidate. **Fix by recording the fact at write time**
 (a `was_fallback` column set by the screening job, which already knows)
 rather than deriving it at read time. Found 27 Aug while verifying M4.
 
-**4. CTC and notice period are free text, so they can only be searched,
+**5. CTC and notice period are free text, so they can only be searched,
 not ranged.** The apply form takes them as strings — "8 LPA",
 "₹12,00,000", "2 months", "Immediate" — so the filter matches text. What
 a recruiter actually wants is "expected CTC under 12 LPA", and that needs
@@ -415,7 +450,7 @@ the existing strings instead would mean guessing at a dozen notations, and
 a wrong guess silently drops a candidate — the exact failure FR-68 exists
 to prevent. This is a form change, not a filter change.
 
-**5. CV bundles are capped at 40 and built in-request.** Tech spec §10
+**6. CV bundles are capped at 40 and built in-request.** Tech spec §10
 puts them behind a `build_export` job because their size is
 unpredictable; that job does not exist. Beyond 40 the export is refused
 with an explanation. **This is the item most likely to bite in
@@ -423,7 +458,7 @@ production** — a serverless response has a size ceiling a local dev
 server does not, so a bundle that works here can fail deployed. Build the
 job before promising CV bundles to a customer.
 
-**6. `exceljs` carries a moderate advisory through `uuid`.**
+**7. `exceljs` carries a moderate advisory through `uuid`.**
 GHSA-w5hq-g745-h8pq — a missing buffer bounds check in uuid v3/v5/v6,
 reachable only when a `buf` argument is passed, which exceljs does not
 do. There is no semver-compatible fix; `npm audit fix --force` would
@@ -431,32 +466,32 @@ change exceljs itself. Left as-is deliberately rather than forcing a
 breaking downgrade over an advisory our usage cannot reach. Recheck when
 exceljs bumps its uuid.
 
-**7. Export PDFs are Latin-1 only.** No font is registered, so
+**8. Export PDFs are Latin-1 only.** No font is registered, so
 @react-pdf's built-in Helvetica is used — a font fetch failing inside a
 request would turn an export into a 500. The cost is that a candidate
 whose name needs Devanagari or Tamil will not render in the PDF. Worth
 fixing with a bundled font file the first time it matters, which for an
 Indian market may be soon.
 
-**8. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
+**9. `middleware.ts` → `proxy.ts`.** This Next version deprecates the
 middleware convention and warns on every boot:
 `npx @next/codemod@canary middleware-to-proxy .` **The migration must carry
 the public-path list forward** — `/apply`, `/api/apply` and `/api/cron`. Drop
 them and intake and cron both break in production while looking fine locally.
 
-**9. Twenty-nine requirements may be too many to mark by hand.** The CA JD
+**10. Twenty-nine requirements may be too many to mark by hand.** The CA JD
 genuinely contains all of them, and some are boilerplate nobody would gate on
 ("Communication skills"). Deliberately *not* filtered — that would mean the
 model deciding what matters, which the design refuses. If marking them proves
 tedious the fix is UI (group or bulk-dismiss soft skills), never a cleverer
 prompt.
 
-**10. Tally hallucination — accepted, not fixed.** Screening credits the
+**11. Tally hallucination — accepted, not fixed.** Screening credits the
 top-ranked candidate with Tally experience their CV never mentions,
 surviving two prompt revisions. Decided 22 Aug 2026: accept as a known model limitation;
 revisit only if the pattern repeats. See `TechDecisions.md` §7.
 
-**11. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
+**12. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
 `.doc` path, but no image-only PDF has been tried. Low priority now the path
 itself works.
 
