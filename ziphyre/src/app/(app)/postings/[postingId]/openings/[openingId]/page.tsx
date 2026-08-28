@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { getOpeningDetail } from "@/lib/postings";
+import { getSessionContext } from "@/lib/session";
+import { getMailSettings } from "@/lib/mail/send";
 import { getApplicationsForOpening } from "@/lib/applications";
 import { OpeningWorkspace } from "./opening-workspace";
 
@@ -23,6 +25,13 @@ export default async function OpeningDetailPage({
 }) {
   const { postingId, openingId } = await params;
   const detail = await getOpeningDetail(openingId);
+  // FR-131: the opening stores no copy of the organisation's link, so
+  // changing the default in Settings reaches every opening that never
+  // set its own.
+  const session = await getSessionContext();
+  const orgBookingUrl = session
+    ? ((await getMailSettings(session.organization.id))?.bookingUrl ?? null)
+    : null;
   if (!detail || detail.opening.posting_id !== postingId) notFound();
 
   const { opening, jdVersion, requirements } = detail;
@@ -45,6 +54,8 @@ export default async function OpeningDetailPage({
         title={opening.title}
         workLocation={opening.work_location}
         createdAt={opening.created_at}
+        bookingUrl={opening.booking_url}
+        orgBookingUrl={orgBookingUrl}
         jdContent={jdVersion?.content ?? null}
         jdVersion={jdVersion?.version ?? null}
         initialRequirements={requirements.map((r) => ({

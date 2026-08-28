@@ -253,7 +253,7 @@ export async function getOpeningDetail(openingId: string) {
   const { data: opening, error } = await supabase
     .from("opening")
     .select(
-      "id, title, work_location, created_at, posting_id, current_jd_version_id, posting:posting_id (id, name, status)",
+      "id, title, work_location, created_at, booking_url, posting_id, current_jd_version_id, posting:posting_id (id, name, status)",
     )
     .eq("id", openingId)
     .maybeSingle();

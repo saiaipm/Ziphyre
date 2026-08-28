@@ -33,6 +33,7 @@ import {
   uploadOpeningJd,
   extractRequirementsForOpening,
   saveRequirements,
+  updateOpeningBookingUrl,
 } from "../../../actions";
 import { CandidatesCard } from "./candidates-card";
 
@@ -48,6 +49,8 @@ type Props = {
   title: string;
   workLocation: string;
   createdAt: string;
+  bookingUrl: string | null;
+  orgBookingUrl: string | null;
   jdContent: string | null;
   jdVersion: number | null;
   initialRequirements: Requirement[];
@@ -60,6 +63,8 @@ export function OpeningWorkspace({
   title,
   workLocation,
   createdAt,
+  bookingUrl,
+  orgBookingUrl,
   jdContent,
   jdVersion,
   initialRequirements,
@@ -112,6 +117,12 @@ export function OpeningWorkspace({
             openingId={openingId}
             hasJd={Boolean(jdContent)}
             initialRequirements={initialRequirements}
+          />
+          <BookingCard
+            openingId={openingId}
+            postingId={postingId}
+            bookingUrl={bookingUrl}
+            orgBookingUrl={orgBookingUrl}
           />
         </TabsContent>
       </Tabs>
@@ -631,5 +642,109 @@ function RequirementRow({
         <X className="size-3.5" aria-hidden />
       </Button>
     </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Interview booking link — FR-130, FR-131
+// ---------------------------------------------------------------------------
+
+/**
+ * The link an interview invite carries for this role.
+ *
+ * Blank means the organisation's link is used — the opening stores no
+ * copy of it, so changing the default in Settings reaches every opening
+ * that never set its own. The card says which one is actually in effect,
+ * because "inherited" and "empty" look identical in a text field and
+ * only one of them means an invite cannot be sent.
+ */
+function BookingCard({
+  openingId,
+  postingId,
+  bookingUrl,
+  orgBookingUrl,
+}: {
+  openingId: string;
+  postingId: string;
+  bookingUrl: string | null;
+  orgBookingUrl: string | null;
+}) {
+  const [value, setValue] = useState(bookingUrl ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const effective = value.trim() || orgBookingUrl;
+
+  async function onSave() {
+    setSaving(true);
+    const result = await updateOpeningBookingUrl({
+      openingId,
+      postingId,
+      bookingUrl: value,
+    });
+    setSaving(false);
+    if (result.ok) {
+      toast.success(
+        value.trim()
+          ? "Booking link saved for this opening"
+          : "Using the organisation's booking link",
+      );
+    } else {
+      toast.error("Couldn't save", { description: result.error });
+    }
+  }
+
+  return (
+    <section className="rounded-lg border border-border bg-card">
+      <div className="border-b border-divider px-6 py-4">
+        <h2 className="text-sm font-semibold">Interview booking link</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Where candidates pick a time when you send an interview invite for
+          this role.
+        </p>
+      </div>
+
+      <div className="space-y-3 px-6 py-5">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={
+            orgBookingUrl
+              ? `Leave blank to use ${orgBookingUrl}`
+              : "https://calendar.app.google/…"
+          }
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={onSave} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          {value.trim() && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground"
+              onClick={() => setValue("")}
+              disabled={saving}
+            >
+              Use the organisation&rsquo;s link
+            </Button>
+          )}
+        </div>
+
+        {effective ? (
+          <p className="text-xs text-muted-foreground">
+            Invites for this role will point at{" "}
+            <span className="font-medium text-foreground">{effective}</span>
+            {!value.trim() && " — the organisation's link"}.
+          </p>
+        ) : (
+          <p className="flex items-start gap-1.5 text-xs text-fit-review">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            No booking link set here or in Settings, so an interview invite
+            can&rsquo;t be sent for this role yet.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
