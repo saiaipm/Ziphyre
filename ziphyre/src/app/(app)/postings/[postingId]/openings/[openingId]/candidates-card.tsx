@@ -39,6 +39,7 @@ import {
   type Filters,
 } from "@/lib/pipeline-filtering";
 import type { ApplicationListItem } from "@/lib/applications";
+import type { OfferKind } from "@/lib/mail/offer";
 import {
   STAGE_LABELS,
   stageTakesDisposition,
@@ -144,8 +145,31 @@ export function CandidatesCard({
           "this candidate")
         : null;
 
-    const pendingMove: PendingMove = { applicationIds, toStage, singleName };
-    if (stageTakesDisposition(toStage)) setMove(pendingMove);
+    // Which offer this move carries. Rejecting offers to tell them;
+    // moving back off a rejection they were *already told about* offers
+    // to correct it, because they are holding an email that no longer
+    // holds. Moving back someone who was never told carries nothing —
+    // there is nothing to correct.
+    const selected = applications.filter((a) => applicationIds.includes(a.id));
+    const offer: OfferKind | null =
+      toStage === "rejected"
+        ? "reject"
+        : selected.some(
+              (a) => a.currentStage === "rejected" && a.outcomeSentAt !== null,
+            )
+          ? "reversal"
+          : null;
+
+    const pendingMove: PendingMove = {
+      applicationIds,
+      toStage,
+      singleName,
+      offer,
+    };
+    // A dialog with nothing to decide is a speed bump, not a safeguard —
+    // so it opens only where there is a disposition to pick or an offer
+    // to make.
+    if (stageTakesDisposition(toStage) || offer !== null) setMove(pendingMove);
     else void commitMove(pendingMove, null, "", false);
   }
 
@@ -190,8 +214,8 @@ export function CandidatesCard({
           description: outcome?.queued
             ? `Your decision is recorded. ${
                 outcome.queued === 1
-                  ? "The outcome email is on its way."
-                  : `${outcome.queued} outcome emails are on their way.`
+                  ? "The email is on its way."
+                  : `${outcome.queued} emails are on their way.`
               }`
             : "Your decision is recorded. Scores never change.",
         },
@@ -205,8 +229,8 @@ export function CandidatesCard({
     if (outcome && outcome.failed.length > 0) {
       toast.error(
         outcome.failed.length === 1
-          ? "Couldn't queue one outcome email"
-          : `Couldn't queue ${outcome.failed.length} outcome emails`,
+          ? "Couldn't queue one email"
+          : `Couldn't queue ${outcome.failed.length} emails`,
         {
           description: `${outcome.failed.join(", ")} — the move was recorded, but they have not been told.`,
         },

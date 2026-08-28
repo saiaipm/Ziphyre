@@ -30,11 +30,13 @@ import {
   STAGE_ACTION_LABELS,
   STAGE_BADGE,
   STAGE_LABELS,
+  stageTakesDisposition,
   type DispositionKey,
   type StageKey,
 } from "@/lib/stages";
 import type { StageEvent, ReassignTarget } from "@/lib/applications";
 import type { OutcomeSendPreview } from "@/lib/mail/outcome";
+import { isEligible, type OfferKind } from "@/lib/mail/offer";
 import {
   loadOutcomeSendPreview,
   loadReassignTargets,
@@ -78,6 +80,12 @@ export type PendingMove = {
   toStage: StageKey;
   /** Single moves name the candidate; batch moves count them. */
   singleName: string | null;
+  /**
+   * Which offer this move carries, if any. `reversal` is the move back
+   * off Rejected for someone already told — they are holding a
+   * rejection email that is no longer true.
+   */
+  offer: OfferKind | null;
 };
 
 /**
@@ -135,16 +143,16 @@ export function StageMoveDialog({
   const count = move?.applicationIds.length ?? 0;
   const isBatch = count > 1;
 
-  // Only rejections carry the offer, so only rejections pay for the
-  // lookup. Keyed on the ids so reopening on a different selection
-  // re-reads rather than showing the last set of names.
-  const isRejection = move?.toStage === "rejected";
+  // Only moves that carry an offer pay for the lookup. Keyed on the ids
+  // so reopening on a different selection re-reads rather than showing
+  // the last set of names.
+  const offer = move?.offer ?? null;
   const idKey = move?.applicationIds.join(",") ?? "";
 
   useEffect(() => {
-    if (!isRejection || idKey === "") return;
+    if (offer === null || idKey === "") return;
     let cancelled = false;
-    loadOutcomeSendPreview(idKey.split(","))
+    loadOutcomeSendPreview(idKey.split(","), offer)
       .then((result) => {
         if (cancelled) return;
         if (result.ok) setPreview({ key: idKey, data: result.data });
@@ -163,7 +171,7 @@ export function StageMoveDialog({
     return () => {
       cancelled = true;
     };
-  }, [isRejection, idKey]);
+  }, [offer, idKey]);
 
   function reset() {
     setDisposition(null);
@@ -177,6 +185,7 @@ export function StageMoveDialog({
 
   const verb = STAGE_ACTION_LABELS[move.toStage];
   const who = move.singleName ?? `${count} candidates`;
+  const takesDisposition = stageTakesDisposition(move.toStage);
 
   // Anything describing a different selection is not an answer about
   // this one, so it reads as still loading.
@@ -184,7 +193,9 @@ export function StageMoveDialog({
   const currentError =
     previewError?.key === idKey ? previewError.message : null;
   const emailable =
-    current?.recipients.filter((r) => r.email && !r.alreadySent) ?? [];
+    offer === null
+      ? []
+      : (current?.recipients.filter((r) => isEligible(r, offer)) ?? []);
   const canOffer = Boolean(current?.configured) && emailable.length > 0;
   const willSend = sendOutcome && canOffer;
 
@@ -223,6 +234,9 @@ export function StageMoveDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* FR-57 scopes disposition to On hold and Rejected. A move
+              back off Rejected takes none, so it is not offered. */}
+          {takesDisposition && (
           <div>
             <p className="text-xs font-semibold text-muted-foreground">
               Why? (optional)
@@ -248,6 +262,7 @@ export function StageMoveDialog({
               ))}
             </div>
           </div>
+          )}
 
           <div>
             <p className="text-xs font-semibold text-muted-foreground">
@@ -266,8 +281,9 @@ export function StageMoveDialog({
             />
           </div>
 
-          {isRejection && (
+          {offer !== null && (
             <OutcomeOffer
+              offer={offer}
               preview={current}
               error={currentError}
               emailableCount={emailable.length}
@@ -337,6 +353,7 @@ export function StageMoveDialog({
  * withdrawn.
  */
 function OutcomeOffer({
+  offer,
   preview,
   error,
   emailableCount,
@@ -345,6 +362,7 @@ function OutcomeOffer({
   onCheckedChange,
   disabled,
 }: {
+  offer: OfferKind;
   preview: OutcomeSendPreview | null;
   error: string | null;
   emailableCount: number;
@@ -398,14 +416,22 @@ function OutcomeOffer({
     );
   }
 
-  const alreadyTold = preview.recipients.filter((r) => r.alreadySent);
-  const unreachable = preview.recipients.filter((r) => !r.email && !r.alreadySent);
+  // Running the other way, "already told" is the qualification rather
+  // than the disqualification — so the excluded set inverts too.
+  const excludedByGate = preview.recipients.filter((r) =>
+    offer === "reject" ? r.alreadySent : !r.alreadySent,
+  );
+  const unreachable = preview.recipients.filter(
+    (r) => !r.email && !excludedByGate.includes(r),
+  );
 
   if (!canOffer) {
     return (
       <div className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground">
-        {alreadyTold.length > 0 && unreachable.length === 0
-          ? "Already told the outcome — there is nothing left to send."
+        {excludedByGate.length > 0 && unreachable.length === 0
+          ? offer === "reject"
+            ? "Already told the outcome — there is nothing left to send."
+            : "They were never told they had been rejected, so there is nothing to correct."
           : "No email address on file, so this can only be recorded, not sent. Candidates added by CV upload have no address."}
       </div>
     );
@@ -427,22 +453,36 @@ function OutcomeOffer({
         <span>
           <span className="flex items-center gap-1.5 font-medium">
             <Mail className="size-3.5" aria-hidden />
-            Email {emailableCount === 1 ? "them" : `${emailableCount} of them`}{" "}
-            the outcome
+            {offer === "reject" ? (
+              <>
+                Email {emailableCount === 1 ? "them" : `${emailableCount} of them`}{" "}
+                the outcome
+              </>
+            ) : (
+              <>
+                Tell {emailableCount === 1 ? "them" : `${emailableCount} of them`}{" "}
+                the decision changed
+              </>
+            )}
           </span>
           <span className="mt-1 block text-xs text-muted-foreground">
             {/* FR-108, in the place the decision is made. */}
             Sent from {preview.fromEmail}. <strong>This cannot be unsent.</strong>{" "}
-            Their status page shows the decision only once it has gone.
+            {offer === "reject"
+              ? "Their status page shows the decision only once it has gone."
+              : "They were sent a rejection that no longer holds; their status page has already changed."}
           </span>
         </span>
       </label>
 
-      {(alreadyTold.length > 0 || unreachable.length > 0) && (
+      {(excludedByGate.length > 0 || unreachable.length > 0) && (
         <ul className="mt-2 space-y-0.5 border-t border-border pt-2 text-xs text-muted-foreground">
-          {alreadyTold.map((r) => (
+          {excludedByGate.map((r) => (
             <li key={r.applicationId}>
-              {r.candidateName} — already told, not emailed again.
+              {r.candidateName} —{" "}
+              {offer === "reject"
+                ? "already told, not emailed again."
+                : "was never told, so nothing to correct."}
             </li>
           ))}
           {unreachable.map((r) => (

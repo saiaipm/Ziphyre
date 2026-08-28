@@ -98,6 +98,12 @@ export type ApplicationListItem = {
   /** FR-71: the export needs the candidate's real email, not the
    *  placeholder a manual upload was given. Null when it is one. */
   candidateEmail: string | null;
+  /**
+   * When the outcome message actually went (FR-123). The pipeline needs
+   * it to know whether moving someone *off* Rejected contradicts
+   * something they have already been told — see `changeApplicationStage`.
+   */
+  outcomeSentAt: string | null;
   screening: {
     overall: number;
     jdFit: number;
@@ -132,7 +138,7 @@ export async function getApplicationsForOpening(
     .from("application")
     .select(
       `id, current_stage, screening_status, screening_failure_reason,
-       cv_original_filename, created_at, submitted_at,
+       cv_original_filename, created_at, submitted_at, outcome_sent_at,
        form_answers, admin_overrides,
        candidate:candidate_id (full_name, email),
        screening:current_screening_id (
@@ -193,6 +199,7 @@ export async function getApplicationsForOpening(
         candidate?.email && !candidate.email.endsWith("@ziphyre.internal")
           ? candidate.email
           : null,
+      outcomeSentAt: (row.outcome_sent_at as string | null) ?? null,
       screening: s
         ? {
             overall: s.overall,

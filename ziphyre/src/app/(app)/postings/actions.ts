@@ -16,6 +16,7 @@ import type { JobKind } from "@/lib/jobs/types";
 import {
   getOutcomeSendPreview,
   queueOutcomeMessages,
+  type OfferKind,
   type OutcomeSendPreview,
   type OutcomeSendResult,
 } from "@/lib/mail/outcome";
@@ -845,6 +846,20 @@ export async function changeApplicationStage(input: {
 
   const supabase = await createClient();
 
+  // Read before moving: afterwards the stage has changed and there is no
+  // way to tell who was on Rejected when this started.
+  const reversal = input.toStage !== "rejected";
+  let toldIds: string[] = [];
+  if (reversal) {
+    const { data } = await supabase
+      .from("application")
+      .select("id")
+      .in("id", input.applicationIds)
+      .eq("current_stage", "rejected")
+      .not("outcome_sent_at", "is", null);
+    toldIds = (data ?? []).map((r) => r.id);
+  }
+
   let failed = 0;
   const movedIds: string[] = [];
   for (const applicationId of input.applicationIds) {
@@ -875,6 +890,48 @@ export async function changeApplicationStage(input: {
     if (outcome.queued > 0) pumpJobsAfterResponse(["send_message"]);
   }
 
+  // ---- Moving back off Rejected, after they were told ----------------
+  //
+  // Two separate obligations, and only the first is optional.
+  //
+  // The update is offered, because Principle 4 says a state change
+  // reaches the people it affects and a reversal qualifies — someone is
+  // holding a rejection email that is no longer true.
+  //
+  // Clearing `outcome_sent_at` is NOT optional and happens either way.
+  // The column is FR-123's gate: while it is set, a future rejection
+  // would flip the status page to "Not moving forward" instantly, with
+  // no second email and no human deciding to send one. The protection
+  // would be spent after its first use. Re-arming it means any later
+  // rejection needs a fresh, deliberate send.
+  const reversedIds = toldIds.filter((id) => movedIds.includes(id));
+  if (reversedIds.length > 0) {
+    if (input.sendOutcome) {
+      outcome = await queueOutcomeMessages({
+        organizationId: session.organization.id,
+        organisationName: session.organization.name,
+        applicationIds: reversedIds,
+        sentBy: session.userId,
+        kind: "reversal",
+      });
+      if (outcome.queued > 0) pumpJobsAfterResponse(["send_message"]);
+    }
+
+    // After the send, never before: `queueOutcomeMessages` uses
+    // `outcome_sent_at` to decide who is eligible for a reversal
+    // message, so clearing it first would make the list empty.
+    const { error: clearError } = await supabase
+      .from("application")
+      .update({ outcome_sent_at: null })
+      .in("id", reversedIds);
+    if (clearError) {
+      // Worth surfacing rather than swallowing: the move succeeded, but
+      // the gate is still armed and a later rejection would skip its
+      // human step.
+      console.error("[stage] couldn't clear outcome_sent_at", clearError);
+    }
+  }
+
   revalidatePath(`/postings/${input.postingId}/openings/${input.openingId}`);
   revalidatePath("/");
 
@@ -899,6 +956,7 @@ export async function changeApplicationStage(input: {
  */
 export async function loadOutcomeSendPreview(
   applicationIds: string[],
+  kind: OfferKind = "reject",
 ): Promise<ActionResult<OutcomeSendPreview>> {
   const session = await getSessionContext();
   if (!session) return { ok: false, error: "Not signed in." };
@@ -911,6 +969,7 @@ export async function loadOutcomeSendPreview(
         session.organization.id,
         session.organization.name,
         applicationIds,
+        kind,
       ),
     };
   } catch (e) {

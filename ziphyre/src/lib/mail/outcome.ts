@@ -1,10 +1,21 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { getMailSettings, getTemplate, queueMessage, statusUrl } from "./send";
-import { render } from "./templates";
+import { render, type MessageKind } from "./templates";
+import { isEligible, type OfferKind, type OutcomeRecipient } from "./offer";
+
+// Re-exported so callers reach one name for these, not two.
+export { isEligible };
+export type { OfferKind, OutcomeRecipient };
+
+const TEMPLATE_FOR: Record<OfferKind, MessageKind> = {
+  reject: "outcome_rejected",
+  reversal: "general_update",
+};
 
 /**
- * The outcome message, offered as part of rejecting — FR-110.
+ * The outcome message offered when rejecting (FR-110), and the update
+ * offered when that rejection is reversed.
  *
  * **This is the only place a stage change causes an email, and it does
  * so only because a person ticked a box in the same action.** FR-109 is
@@ -18,15 +29,6 @@ import { render } from "./templates";
  * browser sends ids; it never sends addresses.
  */
 
-export type OutcomeRecipient = {
-  applicationId: string;
-  candidateName: string;
-  /** Null for a manual upload's placeholder address — see below. */
-  email: string | null;
-  /** FR-124: the outcome is sent once. A second send is not offered. */
-  alreadySent: boolean;
-};
-
 export type OutcomeSendPreview = {
   /** FR-116. False means the offer is replaced by the way to fix it. */
   configured: boolean;
@@ -39,7 +41,9 @@ export type OutcomeSendPreview = {
 
 type RecipientRow = {
   id: string;
-  status_token: string;
+  /** Nullable since the purge nulls it (§10A.5) — a purged application
+   *  has no status page left to link to. */
+  status_token: string | null;
   outcome_sent_at: string | null;
   candidate: { full_name: string | null; email: string | null } | null;
   opening: { title: string } | null;
@@ -86,6 +90,7 @@ export async function getOutcomeSendPreview(
   organizationId: string,
   organisationName: string,
   applicationIds: string[],
+  kind: OfferKind = "reject",
 ): Promise<OutcomeSendPreview> {
   const settings = await getMailSettings(organizationId);
   // FR-114 stores `verified_at` only after the credentials authenticated,
@@ -98,12 +103,12 @@ export async function getOutcomeSendPreview(
   let sample: OutcomeSendPreview["sample"] = null;
   const only = rows.length === 1 ? rows[0] : null;
   if (only && realEmail(only.candidate?.email)) {
-    const template = await getTemplate(organizationId, "outcome_rejected");
+    const template = await getTemplate(organizationId, TEMPLATE_FOR[kind]);
     const vars = {
       candidateName: only.candidate?.full_name ?? "there",
       roleTitle: only.opening?.title ?? "the role",
       organisationName,
-      statusLink: statusUrl(only.status_token),
+      statusLink: only.status_token ? statusUrl(only.status_token) : "",
     };
     sample = {
       subject: render(template.subject, vars),
@@ -141,7 +146,9 @@ export async function queueOutcomeMessages(input: {
   organisationName: string;
   applicationIds: string[];
   sentBy: string;
+  kind?: OfferKind;
 }): Promise<OutcomeSendResult> {
+  const kind: OfferKind = input.kind ?? "reject";
   const result: OutcomeSendResult = {
     queued: 0,
     noEmail: [],
@@ -168,8 +175,9 @@ export async function queueOutcomeMessages(input: {
     }
     // Re-checked here rather than trusted from the preview: the dialog's
     // snapshot could be minutes old, and the cost of being wrong is a
-    // second rejection email to someone already rejected.
-    if (row.outcome_sent_at !== null) {
+    // second rejection email to someone already rejected — or, running
+    // the other way, an "update" to someone who was never told anything.
+    if (!isEligible(toRecipient(row), kind)) {
       result.alreadySent.push(name);
       continue;
     }
@@ -177,14 +185,14 @@ export async function queueOutcomeMessages(input: {
     const queued = await queueMessage({
       organizationId: input.organizationId,
       applicationId: row.id,
-      kind: "outcome_rejected",
+      kind: TEMPLATE_FOR[kind],
       toEmail: email,
       vars: {
         candidateName: name,
         roleTitle: row.opening?.title ?? "the role",
         organisationName: input.organisationName,
         // FR-124: the same link they already have, never a new one.
-        statusLink: statusUrl(row.status_token),
+        statusLink: row.status_token ? statusUrl(row.status_token) : "",
       },
       sentBy: input.sentBy,
     });
