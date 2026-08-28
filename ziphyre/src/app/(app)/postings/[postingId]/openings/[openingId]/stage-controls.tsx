@@ -122,6 +122,15 @@ export function StageMoveDialog({
   const [preview, setPreview] = useState<
     { key: string; data: OutcomeSendPreview } | null
   >(null);
+  /**
+   * A failed lookup must say so. The first cut only handled success, so
+   * an error left the panel spinning "Checking who can be emailed…"
+   * forever — which reads as the *rejection* being stuck, when in fact
+   * the rejection is fine and only the offer is unavailable.
+   */
+  const [previewError, setPreviewError] = useState<
+    { key: string; message: string } | null
+  >(null);
 
   const count = move?.applicationIds.length ?? 0;
   const isBatch = count > 1;
@@ -135,9 +144,22 @@ export function StageMoveDialog({
   useEffect(() => {
     if (!isRejection || idKey === "") return;
     let cancelled = false;
-    loadOutcomeSendPreview(idKey.split(",")).then((result) => {
-      if (!cancelled && result.ok) setPreview({ key: idKey, data: result.data });
-    });
+    loadOutcomeSendPreview(idKey.split(","))
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok) setPreview({ key: idKey, data: result.data });
+        else setPreviewError({ key: idKey, message: result.error });
+      })
+      // A server action can reject outright — a cold start that times
+      // out, a dropped connection. Caught here for the same reason:
+      // silence would be an endless spinner.
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setPreviewError({
+          key: idKey,
+          message: e instanceof Error ? e.message : "The check didn't complete.",
+        });
+      });
     return () => {
       cancelled = true;
     };
@@ -148,6 +170,7 @@ export function StageMoveDialog({
     setNote("");
     setSendOutcome(false);
     setPreview(null);
+    setPreviewError(null);
   }
 
   if (!move) return null;
@@ -158,6 +181,8 @@ export function StageMoveDialog({
   // Anything describing a different selection is not an answer about
   // this one, so it reads as still loading.
   const current = preview?.key === idKey ? preview.data : null;
+  const currentError =
+    previewError?.key === idKey ? previewError.message : null;
   const emailable =
     current?.recipients.filter((r) => r.email && !r.alreadySent) ?? [];
   const canOffer = Boolean(current?.configured) && emailable.length > 0;
@@ -244,6 +269,7 @@ export function StageMoveDialog({
           {isRejection && (
             <OutcomeOffer
               preview={current}
+              error={currentError}
               emailableCount={emailable.length}
               canOffer={canOffer}
               checked={sendOutcome}
@@ -312,6 +338,7 @@ export function StageMoveDialog({
  */
 function OutcomeOffer({
   preview,
+  error,
   emailableCount,
   canOffer,
   checked,
@@ -319,12 +346,29 @@ function OutcomeOffer({
   disabled,
 }: {
   preview: OutcomeSendPreview | null;
+  error: string | null;
   emailableCount: number;
   canOffer: boolean;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled: boolean;
 }) {
+  // The rejection is unaffected — only the offer is. Saying so matters:
+  // otherwise this reads as "the whole action is broken, don't click".
+  if (error !== null) {
+    return (
+      <div className="rounded-lg border border-border px-3 py-2.5 text-xs">
+        <p className="font-medium text-fit-review">
+          Couldn&rsquo;t check who can be emailed.
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          You can still reject — the decision will be recorded as normal, and
+          nobody will be emailed. {error}
+        </p>
+      </div>
+    );
+  }
+
   if (preview === null) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground">
