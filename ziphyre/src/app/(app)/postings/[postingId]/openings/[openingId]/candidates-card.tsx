@@ -125,6 +125,17 @@ export function CandidatesCard({
   const allVisibleSelected =
     visible.length > 0 && selectedVisible.length === visible.length;
 
+  // The bulk invite shows only when the whole selection is already
+  // shortlisted. Mixed selections would make one button mean two things
+  // — "invite these" and "invite these and ignore those" — and the
+  // second is not something anyone asked for.
+  const allSelectedShortlisted =
+    selectedVisible.length > 0 &&
+    selectedVisible.every(
+      (id) =>
+        applications.find((a) => a.id === id)?.currentStage === "shortlisted",
+    );
+
   function toggleSelected(id: string, on: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -511,6 +522,10 @@ export function CandidatesCard({
                 <BatchBar
                   count={selectedVisible.length}
                   onMove={(stage) => requestMove(selectedVisible, stage)}
+                  onInvite={() =>
+                    setInviting({ ids: selectedVisible, name: null })
+                  }
+                  showInvite={allSelectedShortlisted}
                   onClear={() => setSelected(new Set())}
                   disabled={moving}
                 />

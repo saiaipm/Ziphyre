@@ -533,11 +533,16 @@ export function OutcomeOffer({
 export function BatchBar({
   count,
   onMove,
+  onInvite,
+  showInvite,
   onClear,
   disabled,
 }: {
   count: number;
   onMove: (stage: StageKey) => void;
+  /** FR-107 in bulk, for a selection that is already shortlisted. */
+  onInvite: () => void;
+  showInvite: boolean;
   onClear: () => void;
   disabled: boolean;
 }) {
@@ -566,6 +571,21 @@ export function BatchBar({
         >
           Reject
         </Button>
+        {/* Only where the whole selection is already shortlisted —
+            otherwise "invite" and "move" are two different actions
+            wearing one button. */}
+        {showInvite && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={disabled}
+            onClick={onInvite}
+          >
+            <Mail className="size-3.5" aria-hidden />
+            Interview invite
+          </Button>
+        )}
       </div>
       <Button
         size="sm"
