@@ -12,6 +12,13 @@ import { runWithFallback } from "@/lib/ai/run-with-fallback";
 import type { ProviderId } from "@/lib/ai/providers";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { runQueuedJobs } from "@/lib/jobs/runner";
+import type { JobKind } from "@/lib/jobs/types";
+import {
+  getOutcomeSendPreview,
+  queueOutcomeMessages,
+  type OutcomeSendPreview,
+  type OutcomeSendResult,
+} from "@/lib/mail/outcome";
 import {
   getApplicationsForOpening,
   getReassignTargets,
@@ -53,9 +60,11 @@ function resolveCvMime(file: File): string | null {
  * convenience layered on the real job queue, not a replacement for it.
  * If a deployment's route timeout cuts this short, the jobs are still
  * `queued` and Vercel Cron (vercel.json, every minute) picks them up. */
-function pumpJobsAfterResponse() {
+function pumpJobsAfterResponse(
+  kinds: JobKind[] = ["screen_application"],
+) {
   after(() => {
-    runQueuedJobs({ kinds: ["screen_application"] }).catch(() => {});
+    runQueuedJobs({ kinds }).catch(() => {});
   });
 }
 
@@ -804,10 +813,22 @@ export async function changeApplicationStage(input: {
   toStage: StageKey;
   disposition?: DispositionKey | null;
   note?: string | null;
+  /**
+   * FR-110. The offer made in the reject dialog, carried into the same
+   * action. **Only ever true because a person ticked it** — FR-109 means
+   * no other caller may set this, and no default may supply it.
+   */
+  sendOutcome?: boolean;
   /** For revalidation; the pipeline is addressed by both ids. */
   postingId: string;
   openingId: string;
-}): Promise<ActionResult<{ moved: number; failed: number }>> {
+}): Promise<
+  ActionResult<{
+    moved: number;
+    failed: number;
+    outcome: OutcomeSendResult | null;
+  }>
+> {
   const session = await getSessionContext();
   if (!session) return { ok: false, error: "Not signed in." };
 
@@ -824,8 +845,8 @@ export async function changeApplicationStage(input: {
 
   const supabase = await createClient();
 
-  let moved = 0;
   let failed = 0;
+  const movedIds: string[] = [];
   for (const applicationId of input.applicationIds) {
     const { error } = await supabase.rpc("record_stage_change", {
       p_application_id: applicationId,
@@ -835,7 +856,23 @@ export async function changeApplicationStage(input: {
       p_note: input.note ?? null,
     });
     if (error) failed += 1;
-    else moved += 1;
+    else movedIds.push(applicationId);
+  }
+
+  const moved = movedIds.length;
+
+  // FR-110. Queued only for the candidates who actually moved: telling
+  // someone they were not successful when the rejection failed to record
+  // is the one ordering mistake here that cannot be taken back.
+  let outcome: OutcomeSendResult | null = null;
+  if (input.sendOutcome && input.toStage === "rejected" && moved > 0) {
+    outcome = await queueOutcomeMessages({
+      organizationId: session.organization.id,
+      organisationName: session.organization.name,
+      applicationIds: movedIds,
+      sentBy: session.userId,
+    });
+    if (outcome.queued > 0) pumpJobsAfterResponse(["send_message"]);
   }
 
   revalidatePath(`/postings/${input.postingId}/openings/${input.openingId}`);
@@ -851,7 +888,37 @@ export async function changeApplicationStage(input: {
     };
   }
 
-  return { ok: true, data: { moved, failed } };
+  return { ok: true, data: { moved, failed, outcome } };
+}
+
+/**
+ * FR-110 and FR-116. What the reject dialog needs before it can offer
+ * anything: whether a sending identity exists, who among the selection
+ * can actually be reached, and — for a single candidate — the words
+ * that would leave.
+ */
+export async function loadOutcomeSendPreview(
+  applicationIds: string[],
+): Promise<ActionResult<OutcomeSendPreview>> {
+  const session = await getSessionContext();
+  if (!session) return { ok: false, error: "Not signed in." };
+  if (applicationIds.length === 0) return { ok: false, error: "Nothing selected." };
+
+  try {
+    return {
+      ok: true,
+      data: await getOutcomeSendPreview(
+        session.organization.id,
+        session.organization.name,
+        applicationIds,
+      ),
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Couldn't check the sending setup.",
+    };
+  }
 }
 
 /** FR-59. Read on demand — history is opened, not listed. */

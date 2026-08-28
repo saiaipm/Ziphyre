@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { ChevronDown, Loader2, ArrowRightLeft } from "lucide-react";
+import { ChevronDown, Loader2, ArrowRightLeft, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,7 +34,13 @@ import {
   type StageKey,
 } from "@/lib/stages";
 import type { StageEvent, ReassignTarget } from "@/lib/applications";
-import { loadReassignTargets, loadStageHistory, reassignApplication } from "../../../actions";
+import type { OutcomeSendPreview } from "@/lib/mail/outcome";
+import {
+  loadOutcomeSendPreview,
+  loadReassignTargets,
+  loadStageHistory,
+  reassignApplication,
+} from "../../../actions";
 
 // ---------------------------------------------------------------------------
 // Stage badge
@@ -53,7 +60,7 @@ export function StageBadge({ stage }: { stage: StageKey }) {
   return (
     <span
       className={cn(
-        "rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+        "rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
         STAGE_BADGE[stage],
       )}
     >
@@ -92,24 +99,80 @@ export function StageMoveDialog({
 }: {
   move: PendingMove | null;
   onCancel: () => void;
-  onConfirm: (disposition: DispositionKey | null, note: string) => void;
+  onConfirm: (
+    disposition: DispositionKey | null,
+    note: string,
+    sendOutcome: boolean,
+  ) => void;
   saving: boolean;
 }) {
   const [disposition, setDisposition] = useState<DispositionKey | null>(null);
   const [note, setNote] = useState("");
+  // FR-109/FR-110: the offer starts unticked. An email to a real person
+  // about a rejection is not something a distracted click should cause,
+  // and "skippable" is only true if skipping is the resting state.
+  const [sendOutcome, setSendOutcome] = useState(false);
+  /**
+   * Held **with the selection it describes**, so a stale preview is
+   * detected at render rather than cleared by an effect. Clearing it in
+   * the effect body is the `set-state-in-effect` pattern this codebase
+   * bans, and the ban has caught real bugs — here it would mean a set
+   * of names briefly belonging to the previous selection.
+   */
+  const [preview, setPreview] = useState<
+    { key: string; data: OutcomeSendPreview } | null
+  >(null);
 
   const count = move?.applicationIds.length ?? 0;
   const isBatch = count > 1;
 
+  // Only rejections carry the offer, so only rejections pay for the
+  // lookup. Keyed on the ids so reopening on a different selection
+  // re-reads rather than showing the last set of names.
+  const isRejection = move?.toStage === "rejected";
+  const idKey = move?.applicationIds.join(",") ?? "";
+
+  useEffect(() => {
+    if (!isRejection || idKey === "") return;
+    let cancelled = false;
+    loadOutcomeSendPreview(idKey.split(",")).then((result) => {
+      if (!cancelled && result.ok) setPreview({ key: idKey, data: result.data });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isRejection, idKey]);
+
   function reset() {
     setDisposition(null);
     setNote("");
+    setSendOutcome(false);
+    setPreview(null);
   }
 
   if (!move) return null;
 
   const verb = STAGE_ACTION_LABELS[move.toStage];
   const who = move.singleName ?? `${count} candidates`;
+
+  // Anything describing a different selection is not an answer about
+  // this one, so it reads as still loading.
+  const current = preview?.key === idKey ? preview.data : null;
+  const emailable =
+    current?.recipients.filter((r) => r.email && !r.alreadySent) ?? [];
+  const canOffer = Boolean(current?.configured) && emailable.length > 0;
+  const willSend = sendOutcome && canOffer;
+
+  // FR-108: the confirmation names how many real people are about to be
+  // emailed. A bare "Reject" while a tickbox quietly mails eleven people
+  // is exactly the confirmation this requirement refuses.
+  const confirmLabel = willSend
+    ? emailable.length === 1
+      ? `${verb} and email`
+      : `${verb} ${count} and email ${emailable.length}`
+    : isBatch
+      ? `${verb} ${count}`
+      : verb;
 
   return (
     <Dialog
@@ -177,6 +240,17 @@ export function StageMoveDialog({
               }
             />
           </div>
+
+          {isRejection && (
+            <OutcomeOffer
+              preview={current}
+              emailableCount={emailable.length}
+              canOffer={canOffer}
+              checked={sendOutcome}
+              onCheckedChange={setSendOutcome}
+              disabled={saving}
+            />
+          )}
         </div>
 
         <DialogFooter className="sm:justify-between">
@@ -185,7 +259,10 @@ export function StageMoveDialog({
             disabled={saving}
             onClick={() => {
               reset();
-              onConfirm(null, "");
+              // Skip means skip everything the dialog offered, the email
+              // included — FR-110's "declining leaves the candidate
+              // un-notified".
+              onConfirm(null, "", false);
             }}
           >
             Skip
@@ -206,19 +283,140 @@ export function StageMoveDialog({
               onClick={() => {
                 const d = disposition;
                 const n = note;
+                const send = willSend;
                 reset();
-                onConfirm(d, n);
+                onConfirm(d, n, send);
               }}
             >
               {saving ? (
                 <Loader2 className="size-3.5 animate-spin" aria-hidden />
               ) : null}
-              {isBatch ? `${verb} ${count}` : verb}
+              {confirmLabel}
             </Button>
           </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * FR-110's offer, and FR-116's version of it when there is nothing to
+ * offer with.
+ *
+ * Everything here is written to be readable *before* the click rather
+ * than explained after it: who cannot be reached and why, what address
+ * it leaves from, and the exact words that go. An outcome email is the
+ * one thing in this product that reaches a stranger and cannot be
+ * withdrawn.
+ */
+function OutcomeOffer({
+  preview,
+  emailableCount,
+  canOffer,
+  checked,
+  onCheckedChange,
+  disabled,
+}: {
+  preview: OutcomeSendPreview | null;
+  emailableCount: number;
+  canOffer: boolean;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled: boolean;
+}) {
+  if (preview === null) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" aria-hidden />
+        Checking who can be emailed…
+      </div>
+    );
+  }
+
+  // FR-116. Say so plainly and offer the fix, rather than letting them
+  // tick a box that would fail at the moment of sending.
+  if (!preview.configured) {
+    return (
+      <div className="rounded-lg border border-border px-3 py-2.5 text-xs">
+        <p className="font-medium">No sending address is set up yet.</p>
+        <p className="mt-1 text-muted-foreground">
+          The rejection will be recorded, but nobody will be told.{" "}
+          <Link
+            href="/settings/communications"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Set up sending
+          </Link>{" "}
+          to email candidates.
+        </p>
+      </div>
+    );
+  }
+
+  const alreadyTold = preview.recipients.filter((r) => r.alreadySent);
+  const unreachable = preview.recipients.filter((r) => !r.email && !r.alreadySent);
+
+  if (!canOffer) {
+    return (
+      <div className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground">
+        {alreadyTold.length > 0 && unreachable.length === 0
+          ? "Already told the outcome — there is nothing left to send."
+          : "No email address on file, so this can only be recorded, not sent. Candidates added by CV upload have no address."}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border px-3 py-2.5">
+      <label className="flex items-start gap-2 text-sm">
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(v) => onCheckedChange(v === true)}
+          disabled={disabled}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="flex items-center gap-1.5 font-medium">
+            <Mail className="size-3.5" aria-hidden />
+            Email {emailableCount === 1 ? "them" : `${emailableCount} of them`}{" "}
+            the outcome
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {/* FR-108, in the place the decision is made. */}
+            Sent from {preview.fromEmail}. <strong>This cannot be unsent.</strong>{" "}
+            Their status page shows the decision only once it has gone.
+          </span>
+        </span>
+      </label>
+
+      {(alreadyTold.length > 0 || unreachable.length > 0) && (
+        <ul className="mt-2 space-y-0.5 border-t border-border pt-2 text-xs text-muted-foreground">
+          {alreadyTold.map((r) => (
+            <li key={r.applicationId}>
+              {r.candidateName} — already told, not emailed again.
+            </li>
+          ))}
+          {unreachable.map((r) => (
+            <li key={r.applicationId}>
+              {r.candidateName} — no email address on file.
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {preview.sample && (
+        <details className="mt-2 border-t border-border pt-2 text-xs">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+            Read what will be sent
+          </summary>
+          <p className="mt-2 font-medium">{preview.sample.subject}</p>
+          <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+            {preview.sample.body}
+          </p>
+        </details>
+      )}
+    </div>
   );
 }
 
@@ -394,7 +592,7 @@ export function StageHistoryPanel({
   return (
     <ol className="space-y-2">
       {events.map((e) => (
-        <li key={e.id} className="text-xs">
+        <li key={e.id} className="text-sm">
           <div className="flex flex-wrap items-baseline gap-x-1.5">
             <span className="font-medium">
               {e.fromStage ? `${STAGE_LABELS[e.fromStage]} → ` : ""}

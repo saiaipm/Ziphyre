@@ -146,13 +146,14 @@ export function CandidatesCard({
 
     const pendingMove: PendingMove = { applicationIds, toStage, singleName };
     if (stageTakesDisposition(toStage)) setMove(pendingMove);
-    else void commitMove(pendingMove, null, "");
+    else void commitMove(pendingMove, null, "", false);
   }
 
   async function commitMove(
     pendingMove: PendingMove,
     disposition: DispositionKey | null,
     note: string,
+    sendOutcome: boolean,
   ) {
     setMoving(true);
     const result = await changeApplicationStage({
@@ -160,6 +161,7 @@ export function CandidatesCard({
       toStage: pendingMove.toStage,
       disposition,
       note,
+      sendOutcome,
       postingId,
       openingId,
     });
@@ -171,7 +173,7 @@ export function CandidatesCard({
       return;
     }
 
-    const { moved, failed } = result.data;
+    const { moved, failed, outcome } = result.data;
     // Partial success is named rather than rounded up to success —
     // an admin who is told "20 moved" and finds 17 stops trusting the
     // number that matters most on this screen.
@@ -184,7 +186,30 @@ export function CandidatesCard({
         moved === 1
           ? `${pendingMove.singleName} → ${STAGE_LABELS[pendingMove.toStage]}`
           : `${moved} candidates → ${STAGE_LABELS[pendingMove.toStage]}`,
-        { description: "Your decision is recorded. Scores never change." },
+        {
+          description: outcome?.queued
+            ? `Your decision is recorded. ${
+                outcome.queued === 1
+                  ? "The outcome email is on its way."
+                  : `${outcome.queued} outcome emails are on their way.`
+              }`
+            : "Your decision is recorded. Scores never change.",
+        },
+      );
+    }
+
+    // FR-111: a message that could not even be queued is never left
+    // looking as though it went. Queueing failures are separate from the
+    // move, which succeeded — so they get their own toast, not a
+    // clause inside a success message.
+    if (outcome && outcome.failed.length > 0) {
+      toast.error(
+        outcome.failed.length === 1
+          ? "Couldn't queue one outcome email"
+          : `Couldn't queue ${outcome.failed.length} outcome emails`,
+        {
+          description: `${outcome.failed.join(", ")} — the move was recorded, but they have not been told.`,
+        },
       );
     }
 
@@ -407,7 +432,7 @@ export function CandidatesCard({
                       {COMPONENT_COLUMNS.map((c) => (
                         <TableHead
                           key={c.key}
-                          className="text-center text-xs font-medium text-muted-foreground"
+                          className="text-center text-sm font-medium text-muted-foreground"
                           title={c.full}
                         >
                           {c.label}
@@ -458,8 +483,8 @@ export function CandidatesCard({
         move={move}
         saving={moving}
         onCancel={() => setMove(null)}
-        onConfirm={(disposition, note) => {
-          if (move) void commitMove(move, disposition, note);
+        onConfirm={(disposition, note, sendOutcome) => {
+          if (move) void commitMove(move, disposition, note, sendOutcome);
         }}
       />
     </section>
@@ -509,11 +534,11 @@ function ApplicationRow({
             label={`Select ${name}`}
           />
         </TableCell>
-        <TableCell className="font-medium">{name}</TableCell>
+        <TableCell className="text-base font-medium">{name}</TableCell>
         <CvFileCell filename={app.cvOriginalFilename} />
         <TableCell colSpan={SCORE_COLSPAN}>
-          <span className="flex items-center gap-1.5 text-xs text-fit-review">
-            <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+          <span className="flex items-center gap-1.5 text-sm text-fit-review">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden />
             Needs manual review — {app.screeningFailureReason}
           </span>
         </TableCell>
@@ -552,11 +577,11 @@ function ApplicationRow({
             label={`Select ${name}`}
           />
         </TableCell>
-        <TableCell className="font-medium">{name}</TableCell>
+        <TableCell className="text-base font-medium">{name}</TableCell>
         <CvFileCell filename={app.cvOriginalFilename} />
         <TableCell colSpan={SCORE_COLSPAN}>
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
             Screening…
           </span>
         </TableCell>
@@ -590,7 +615,7 @@ function ApplicationRow({
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="block max-w-[12rem] truncate text-left text-sm font-medium hover:underline underline-offset-2"
+            className="block max-w-[14rem] truncate text-left text-base font-medium hover:underline underline-offset-2"
             title={`${name} — open assessment`}
           >
             {name}
@@ -605,7 +630,7 @@ function ApplicationRow({
             <TableCell
               key={c.key}
               className={cn(
-                "text-center text-xs tabular-nums",
+                "text-center text-base tabular-nums",
                 FIT_TEXT[fitBand(value)],
               )}
             >
@@ -617,7 +642,7 @@ function ApplicationRow({
         <TableCell className="text-center">
           <span
             className={cn(
-              "inline-block rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
+              "inline-block rounded-full px-2.5 py-0.5 text-base font-semibold tabular-nums",
               FIT_FILL[fitBand(s.overall)],
             )}
           >
@@ -628,7 +653,7 @@ function ApplicationRow({
         {/* Numbers, not a tick: §Accessibility forbids conveying
             must-have status by colour alone, and "1/2" also says how
             far off the candidate is, which a tick cannot. */}
-        <TableCell className="text-center text-xs tabular-nums">
+        <TableCell className="text-center text-sm tabular-nums">
           {mustHaveCount === 0 ? (
             <span className="text-muted-foreground">—</span>
           ) : (
@@ -669,8 +694,8 @@ function ApplicationRow({
           <div className="grid gap-5 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <CvPane applicationId={app.id} open={open} />
 
-          <div className="space-y-4 overflow-y-auto pr-1 text-sm">
-            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+          <div className="space-y-4 overflow-y-auto pr-1 text-base">
+            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
               <Score label="JD Fit" value={s.jdFit} />
               <Score label="Experience" value={s.experience} />
               <Score label="Skills" value={s.skills} />
@@ -680,10 +705,10 @@ function ApplicationRow({
 
             {mustHaveCount > 0 && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground">Must-haves</p>
+                <p className="text-sm font-semibold text-muted-foreground">Must-haves</p>
                 <ul className="mt-1 space-y-1">
                   {s.mustHaveResult.map((m) => (
-                    <li key={m.requirementId} className="text-xs">
+                    <li key={m.requirementId} className="text-sm">
                       <span className={passTone(m.met)}>
                         {m.met ? "✓" : "✗"}
                       </span>{" "}
@@ -695,23 +720,23 @@ function ApplicationRow({
             )}
 
             <div>
-              <p className="text-xs font-semibold text-muted-foreground">Strengths</p>
-              <p className="mt-1 text-sm">{s.strengths}</p>
+              <p className="text-sm font-semibold text-muted-foreground">Strengths</p>
+              <p className="mt-1 text-base">{s.strengths}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-muted-foreground">Gaps</p>
-              <p className="mt-1 text-sm">{s.gaps}</p>
+              <p className="text-sm font-semibold text-muted-foreground">Gaps</p>
+              <p className="mt-1 text-base">{s.gaps}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-muted-foreground">Overall read</p>
-              <p className="mt-1 text-sm">{s.overallRead}</p>
+              <p className="text-sm font-semibold text-muted-foreground">Overall read</p>
+              <p className="mt-1 text-base">{s.overallRead}</p>
             </div>
             {s.experienceDiscrepancy && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground">
+                <p className="text-sm font-semibold text-muted-foreground">
                   Experience discrepancy
                 </p>
-                <p className="mt-1 text-sm">{s.experienceDiscrepancy}</p>
+                <p className="mt-1 text-base">{s.experienceDiscrepancy}</p>
               </div>
             )}
 
@@ -723,7 +748,7 @@ function ApplicationRow({
                 separate audit screen — the question "why was this
                 person dropped?" is asked while looking at them. */}
             <div className="border-t border-divider pt-4">
-              <p className="text-xs font-semibold text-muted-foreground">
+              <p className="text-sm font-semibold text-muted-foreground">
                 Stage history
               </p>
               <div className="mt-2">
@@ -871,13 +896,13 @@ function Score({ label, value }: { label: string; value: number }) {
 function CvFileCell({ filename }: { filename: string | null }) {
   if (!filename) {
     return (
-      <TableCell className="text-xs text-muted-foreground">
+      <TableCell className="text-sm text-muted-foreground">
         <span className="italic">No file</span>
       </TableCell>
     );
   }
   return (
-    <TableCell className="max-w-[9rem] truncate text-xs text-muted-foreground">
+    <TableCell className="max-w-[11rem] truncate text-sm text-muted-foreground">
       <span title={filename}>{filename}</span>
     </TableCell>
   );
