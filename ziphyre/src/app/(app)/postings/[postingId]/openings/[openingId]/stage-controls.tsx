@@ -60,7 +60,7 @@ export function StageBadge({ stage }: { stage: StageKey }) {
   return (
     <span
       className={cn(
-        "rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+        "rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
         STAGE_BADGE[stage],
       )}
     >
@@ -592,7 +592,7 @@ export function StageHistoryPanel({
   return (
     <ol className="space-y-2">
       {events.map((e) => (
-        <li key={e.id} className="text-xs">
+        <li key={e.id} className="text-sm">
           <div className="flex flex-wrap items-baseline gap-x-1.5">
             <span className="font-medium">
               {e.fromStage ? `${STAGE_LABELS[e.fromStage]} → ` : ""}

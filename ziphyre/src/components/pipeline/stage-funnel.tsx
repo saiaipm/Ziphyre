@@ -49,7 +49,7 @@ export function StageFunnel({
         <h2 className="label-meta">Candidate status</h2>
         {/* FR-102, said out loud. If these ever disagree it is a bug,
             and the reader should be able to see that for themselves. */}
-        <span className="text-xs text-muted-foreground">{total} in total</span>
+        <span className="text-sm text-muted-foreground">{total} in total</span>
       </div>
 
       <ul className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-5">
@@ -59,7 +59,7 @@ export function StageFunnel({
             <>
               <span
                 className={cn(
-                  "text-lg font-semibold tabular-nums",
+                  "text-xl font-semibold tabular-nums",
                   // A zero stays grey whatever the stage. Painting "0
                   // Rejected" red would draw the eye to the one number
                   // on the row that says nothing happened.
@@ -68,7 +68,7 @@ export function StageFunnel({
               >
                 {count}
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
                 {STAGE_LABELS[stage]}
               </span>
             </>
@@ -175,7 +175,7 @@ export function SummaryTile({
           </span>
         )}
       </p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-sm text-muted-foreground">{label}</p>
     </>
   );
 
