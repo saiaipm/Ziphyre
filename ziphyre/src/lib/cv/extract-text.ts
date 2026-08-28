@@ -116,10 +116,19 @@ export async function extractDocumentText(
 }
 
 async function extractPdfText(bytes: Buffer): Promise<string> {
+  const started = Date.now();
   const PDFParse = await loadPdfParse();
+  const loaded = Date.now();
   const parser = new PDFParse({ data: bytes });
   try {
     const result = await parser.getText();
+    // Timed because "the job never finished" says nothing about which
+    // stage was slow, and on serverless a killed function logs nothing
+    // at all. These two numbers separate "pdfjs is the problem" from
+    // "the model is the problem" in one line.
+    console.log(
+      `[pdf] import ${loaded - started}ms, parse ${Date.now() - loaded}ms, ${result.text.length} chars`,
+    );
     return result.text;
   } finally {
     await parser.destroy();
