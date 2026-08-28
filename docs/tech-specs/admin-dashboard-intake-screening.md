@@ -582,6 +582,170 @@ Filters and selection carry into the export (**FR-74**). Every export carries th
 
 ---
 
+## 10A. Candidate communications (FR-106 – FR-135)
+
+*Added Draft 8 (PN-004). The product's first outbound path, and the one
+subsystem whose failures reach a real person.*
+
+### 10A.1 Transport — SMTP, deliberately not OAuth
+
+```
+host: smtp.gmail.com   port: 587   STARTTLS
+auth: organisation address + app password
+```
+
+**Why not the Gmail API.** `gmail.send` is a restricted OAuth scope.
+PN-002 established that a sensitive scope puts Ziphyre's whole consent
+screen behind Google's verification review — admin sign-in included, not
+just the feature that asked for it. SMTP with an app password involves no
+consent screen, no scopes and no review: to Google it is a mail client.
+That is the entire reason for the choice, and it should not be
+"modernised" to the API without re-reading PN-002 first.
+
+**Behind one interface.** `lib/mail/transport.ts` exposes a single
+`send(message)`. Gmail SMTP is the first implementation and the Gmail
+account limits are low — roughly 500 recipients a day free, ~2,000 on
+Workspace — so a real provider will eventually replace it. Nothing above
+this interface knows what carries the mail.
+
+**App passwords require 2-Step Verification** on the sending account.
+Google removed the older "less secure app access" toggle in 2022; app
+passwords are the supported path and the settings copy must say so, since
+this is the single most likely place a customer gets stuck.
+
+### 10A.2 Schema
+
+```
+message_template                          -- APPEND ONLY, per FR-129
+  id, organization_id
+  kind            text not null check (kind in
+                    ('application_received','interview_invite',
+                     'outcome_rejected','general_update'))
+  version         int not null
+  subject         text not null
+  body            text not null
+  created_at, created_by
+  unique (organization_id, kind, version)
+
+message                                   -- the outbox, FR-133
+  id, organization_id
+  application_id  uuid not null references application(id) on delete cascade
+  template_id     uuid references message_template(id)   -- FR-129 provenance
+  kind            text not null
+  to_email        text not null           -- as sent, not as looked up later
+  subject         text not null
+  body            text not null           -- rendered, not the template
+  status          text not null default 'queued'
+                    check (status in ('queued','sent','failed'))
+  error           text
+  sent_at         timestamptz
+  sent_by         uuid references app_user(id)  -- null for FR-117
+  created_at
+
+mail_settings
+  organization_id uuid pk references organization(id)
+  from_email      text not null
+  from_name       text
+  app_password_encrypted bytea not null
+  password_hint   text                    -- last 4 only
+  verified_at     timestamptz
+  booking_url     text                    -- FR-130
+  updated_at
+
+application
+  + status_token  text not null unique    -- FR-119, FR-124
+  + outcome_sent_at timestamptz           -- FR-123's gate
+
+opening
+  + booking_url   text                    -- FR-131 override, nullable
+```
+
+**The rendered body is stored, not just the template id.** FR-129 says
+what was actually said to a candidate stays recoverable; a template id
+alone stops being an answer the moment the template is edited. This
+duplicates text on purpose.
+
+**`outcome_sent_at` is the gate, not a derived query.** FR-123 turns on
+whether the outcome has been *sent*, and a column says that in one read
+where a scan of `message` for a successful `outcome_rejected` row would
+be a join the status page performs on every anonymous request.
+
+### 10A.3 Sending is a job
+
+```
+kind: send_message
+payload: { message_id }
+```
+
+Queued per recipient, never per batch: FR-111 requires a failure to be
+attributable to the candidate it was meant for, and one job per message
+gives that for free along with the existing backoff and retry (§7). A
+batch of twenty is twenty rows in `message` and twenty jobs.
+
+**The row is written before the job runs.** A message exists as `queued`
+the moment the admin confirms, so the outbox never has a gap between
+"they clicked send" and "something happened".
+
+**Terminal failure marks the row `failed` with the reason**, and the
+pipeline shows it against the candidate (FR-111). It never retries
+silently forever and never disappears.
+
+### 10A.4 The status page
+
+```
+GET /status/[token]        public, no session, no account
+```
+
+Same shape as `/apply/[token]`: 32 random bytes, base64url, unguessable,
+so postings cannot be enumerated. Added to the proxy's public-path list
+alongside `/apply`, `/api/apply` and `/api/cron` — **omit it and every
+status link 404s in production while working locally.**
+
+**What it may read is deliberately narrow.** Role title, organisation
+name, `submitted_at`, `current_stage`, and `outcome_sent_at`. It must
+never select a score, component, must-have result, assessment text or
+disposition — FR-121 is a Non-Goal, and the safest way to honour it is
+for the query not to fetch the columns at all.
+
+**Stage is mapped, never rendered raw** (FR-122), and the mapping lives
+next to `STAGE_LABELS` so the internal and candidate-facing vocabularies
+cannot drift:
+
+```
+new, screened  -> "Received"
+shortlisted    -> "Shortlisted"
+on_hold        -> "Under review"
+rejected       -> outcome_sent_at ? "Not moving forward" : "Received"
+```
+
+That last line is FR-123 in one expression.
+
+### 10A.5 Retention
+
+The status page is candidate data behind a public URL, so §11's purge
+must kill it. `purge_expired` additionally:
+
+- nulls `application.status_token`, after which `/status/[token]` returns
+  the expired-link copy rather than a 404 — a candidate who bookmarked it
+  deserves an explanation, not a dead end;
+- clears `message.to_email`, `subject` and `body`, keeping `kind`,
+  `status` and `sent_at` so the outbox still shows *that* something was
+  sent without retaining what it said to whom.
+
+**This is a change to a job that has already been tested**, and §11's rule
+applies again: it must be re-tested against a fixture before it runs.
+
+### 10A.6 Routes
+
+| Route | Purpose |
+|---|---|
+| `/communications` | Outbox, templates, sender, booking link (FR-133/134) |
+| `/status/[token]` | Public status page (FR-119) |
+| `POST /api/messages/send` | Confirmed send from the pipeline |
+| `send_message` job | Delivery, retry, failure recording |
+
+---
+
 ## 11. Retention (TechDecisions §8)
 
 ```
@@ -672,6 +836,7 @@ Sequenced so screening quality is proven before anything is built on top of it.
 | **M4 — Pipeline** | Stages, batch actions, disposition, CV viewer, reassignment | A role can be worked end to end |
 | **M5 — Filters & export** | Filtering, sorting, all three export formats | A shortlist can be filtered and sent |
 | **M6 — Overview & retention** | Home counts, mobile layout, purge job | Rahul's glance works on a phone; purge tested |
+| **M7 — Communications** | SMTP transport, send job, status page, templates, outbox | A candidate applies, is emailed a status link, is invited to book, and is told the outcome — every message sent by a person except the first |
 
 **M2 needed no Google integration at all.** Manual upload alone exercised the entire screening path, so the riskiest question in the product — is the ranking trustworthy — was answered before a single line of OAuth was written.
 
@@ -683,6 +848,7 @@ Sequenced so screening quality is proven before anything is built on top of it.
 
 | Requirement group | Where implemented |
 |---|---|
+| FR-106 – FR-135 | §10A Communications, §11 Retention |
 | FR-1 – FR-4 | *Retired.* No Google connection exists |
 | FR-5 – FR-12 | §2 `posting`, `opening`, `jd_version` |
 | FR-13 – FR-18 | §6.6 Extraction, §2 `requirement` |
@@ -720,6 +886,7 @@ Retired ranges are listed rather than removed. The numbers are never reused, so 
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 8 | 28 Aug 2026 | **§10A added — candidate communications (PN-004, functional spec Draft 9).** Mail goes over SMTP with an app password behind a single `send()` interface, because the Gmail API's `gmail.send` is a restricted scope and PN-002 established that one such scope re-gates the whole consent screen. Sending is a `send_message` job queued **per recipient**, so a failure is attributable to the candidate it was meant for and inherits the existing backoff. `message` stores the **rendered** body rather than only a template id, since FR-129's promise that what was said stays recoverable dies the moment a template is edited. `application.outcome_sent_at` exists so FR-123's gate is one column read on an anonymous request rather than a join. The status page joins `/apply` in the proxy's public-path list — omitting it 404s every status link in production while working locally — and its query deliberately does not fetch score columns at all, because the safest way to honour Non-Goal 9 is to be unable to leak it. Retention grows a second obligation: the purge nulls the status token and clears message contents, which means **the purge job must be re-tested before it runs again** |
 | Draft 7 | 27 Aug 2026 | **M4's stage transitions built (FR-56 – FR-60).** Two security-definer functions join `record_screening` for the same structural reason §2.2 gives: `record_stage_change` writes the history row and moves the pointer in one transaction, and `reassign_application` checks the posting, the self-move and the `(opening_id, candidate_id)` collision under a row lock rather than from the application layer, so two admins racing cannot both pass a pre-check. Both check membership themselves — unlike `record_screening` they are reachable from a Server Action with a user-supplied id, and definer rights would otherwise cross tenants. Three decisions recorded beyond §9: **disposition is constrained in the database**, to FR-58's six values and to On hold / Rejected only, because an invented value would quietly corrupt FR-71's export column; **a no-op move writes no history**, since batch actions make "Rejected → Rejected" easy to produce by accident and §9's own audit trail is the one place that has to stay readable; and **reassignment is not a `stage_event`** — the stage does not change, and a synthetic row would break FR-102's arithmetic. Adds the stage filter FR-66 always specified but which was meaningless while nothing could leave `screened`. Reassignment's rescreen needs no new payload: `screen_application` resolves the opening at run time, so a job queued after the move reads the new JD by construction |
 | Draft 6 | 27 Aug 2026 | Records the M4 UI shell as built, and one deliberate deviation: the screening-side filters and sorting run client-side over the already-loaded list rather than as a composed query (§9), justified by §15's several-hundred ceiling. The form-answer filters and FR-68's exclusion counting remain unbuilt and keep the server-side design. Also notes what the shell does *not* include — nothing can yet move an application off `screened`, so the FR-101 funnel cannot change until the stage transitions land |
 | Draft 5 | 23 Aug 2026 | **Google intake replaced by a Ziphyre-hosted application page (PN-002, functional spec Draft 6).** §5 rewritten end to end: a public `/apply/[token]` surface, a two-step upload-then-submit flow where the CV never passes through the application server, and server-side verification of the uploaded object rather than trust in what the client claims. Schema: `posting.apply_token` and `candidate.email_verified` added; `google_connection`, `unmatched_submission`, `opening.form_option_value`, the six Google columns on `posting`, and `cv_drive_file_id` / `source_row_number` / `previous_cv_storage_path` / `resubmitted_at` on `application` all dropped. The `import_submissions` job kind and the fourth moving part in §1 go with them. Two consequences recorded rather than glossed: the public intake handlers join background jobs as the places where tenant isolation is hand-enforced rather than given by RLS, and retention becomes load-bearing now that Ziphyre holds the only copy of every CV |
