@@ -259,9 +259,14 @@ working surfaces, phone for the overview, and a twelve-column table is
 not a phone screen.
 
 
-**M7 (candidate communications) — half built, on `m8-candidate-communications`.**
-PN-004, functional spec Draft 9 (FR-106 – FR-135), tech spec Draft 8 §10A.
-Migration `20260828090000_m7_communications.sql`, applied.
+**M7 (candidate communications) — complete and merged to `main`, 28 Aug
+2026.** PN-004, functional spec Draft 9 (FR-106 – FR-135), tech spec
+Draft 9 §10A. Migrations `20260828090000_m7_communications.sql`,
+`20260828160000_m7_purge_status_token.sql` and
+`20260828170000_m7_outcome_reversed_kind.sql`, all applied.
+
+**Also deployed to `ziphyre.vercel.app`** from `main`, root directory
+`ziphyre`. Every commit auto-deploys.
 
 *Built and verified:*
 
@@ -310,46 +315,71 @@ Migration `20260828090000_m7_communications.sql`, applied.
   the offer had failed; failures now render with their reason and say the
   rejection can still proceed.
 
-*Not built yet — the rest of M7:*
+*The rest of M7, all built and sent for real on 28 Aug:*
 
-1. Sending **other** message kinds from the pipeline (FR-106 – FR-109,
-   FR-111, FR-112) — interview invite and general update. Only the
-   rejection outcome can be sent today.
-2. The Communications **outbox** — what was sent, what failed, retry
-   (FR-133). **This is the gap that bites next:** a delivery failure is
-   recorded on the `message` row with its reason and is visible nowhere
-   in the UI. Queue failures toast; delivery failures do not.
-3. **Template editing** (FR-126 – FR-129). Defaults live in
-   `lib/mail/templates.ts` and are used until a customer edits one; the
-   `message_template` table is empty and that is correct. **Specified in
-   tech spec Draft 9 §10A.7** — the plumbing already exists
-   (`getTemplate()` falls back to the defaults, and the table has no
-   update policy), so this is a UI slice on working foundations.
+- **Sending from the pipeline (FR-106 – FR-112).** Three offers, each
+  unticked by default, each naming on the confirm button how many real
+  people get mail (FR-108): the outcome when rejecting (FR-110), the
+  correction when un-rejecting, and the interview invite. **Nothing
+  sends itself** (FR-109) — the apply confirmation remains the only
+  message no person chose.
+- **Interview invites (FR-107, FR-130 – FR-132)**, two ways in: offered
+  when shortlisting, and standalone on any shortlisted row or selection,
+  which changes no stage. Making the invite depend on a move would write
+  a stage-history row for a move that never happened. FR-132 is enforced,
+  not assumed: no booking link, no offer. FR-131's per-opening override
+  resolves **per application, not per batch**.
+- **Bulk works throughout** — reject, un-reject, shortlist-and-invite,
+  and standalone invite. One `message` row and one job per recipient, so
+  a failure is attributable to the candidate it was meant for. The bulk
+  invite button shows only when the whole selection is already
+  shortlisted.
+- **The Communications outbox (FR-133) at `/communications`**, in the
+  primary nav — an outbox is something you check, not configure. Every
+  message with candidate, role, kind, status, when, and who sent it; a
+  failure carries its reason and a Retry (FR-111). **"Sent", never
+  "Delivered"** (FR-112). Purged rows read "Details deleted" and cannot
+  be retried. The sending identity moved here too (FR-134);
+  `/settings/communications` redirects.
+- **Template editing (FR-126 – FR-129)**, tested by the user: all five
+  kinds editable, previewed with a real candidate's values through the
+  **same `render()` the send path uses**. Unknown variables block the
+  save — `render()` leaves a typo as literal text so it fails visibly,
+  but without the check "visibly" means visible to the candidate.
+  Restore-to-default inserts the default as a new version rather than
+  deleting, because `message.template_id` references these rows.
 
-**Start the next session here.** Real mail is now flowing, which moves
-two Outstanding items from theoretical to live:
+**Four bugs the real sends caught, none visible to typecheck, lint or a
+production build.** Worth recording because they are the argument for
+sending to a real inbox rather than trusting a green build:
 
-1. **The purge's M7 obligations (Outstanding item 1).** `message` now has
-   rows, so a purged posting would leave a candidate's name, address and
-   the text they were sent sitting in the outbox. This was zero-risk
-   while the table was empty. It no longer is. §11's rule applies: re-test
-   against a fixture after the change.
-2. **The un-reject contradiction (item 2).** One candidate now genuinely
-   has `outcome_sent_at` set, so moving them back off Rejected reproduces
-   this today rather than hypothetically.
+1. The `outcome_rejected` template carried **no `{{statusLink}}`**,
+   breaking FR-124 outright — the candidate would have kept a link that
+   goes on saying "under review". Caught by reading the send preview.
+2. A failed send-check left the offer **spinning forever**, which reads
+   as the rejection being stuck when only the offer had failed.
+3. The reversal borrowed `general_update`, whose default body is a
+   placeholder — **"[Write your update here.]" was sendable** to a real
+   person. It has its own `outcome_reversed` kind now.
+4. The send checkbox was **invisible** against a flat panel — a 16px box
+   with a 1px border, on the one control that mails a stranger.
 
-Then either the outbox (FR-133) or template editing (§10A.7) — the outbox
-is the more urgent of the two, because a delivery failure is currently
-invisible in the UI.
+**Start the next session here.** M7 is done. Two things worth doing
+before anything new:
 
-**Also deployed 28 Aug:** `ziphyre.vercel.app`, from `main`. Root
-directory `ziphyre`. **Vercel's Hobby plan caps cron at once a day**, so
-`vercel.json` had to drop `/api/cron/jobs` from every minute to daily —
-Vercel rejects the whole config rather than downgrading it, so no
-deployment is created at all until it complies. The `after()` pump means
-interactive work still runs promptly; only work queued with nobody around
-waits. **The production send-check spins** where local works, which
-points at `SUPABASE_SERVICE_ROLE_KEY` on Vercel — unverified.
+1. **The apply confirmation (FR-117) has still never fired for real.**
+   The path is complete and pumps its own job, but the only form
+   application predates the mail setup, so no `application_received` has
+   ever been sent. It is the first message every real candidate gets.
+   Test by applying with a `+tag` alias on a personal address.
+2. **Production's send-check spins where local works**, which points at
+   `SUPABASE_SERVICE_ROLE_KEY` on Vercel — the offer calls
+   `getMailSettings` through the admin client. Unverified, and it would
+   break every send offer in production.
+
+Then: M8, or the Outstanding items below — item 4 (the fallback note
+lying after a provider reorder) and item 6 (CV bundles built in-request)
+are the two most likely to embarrass a demo.
 
 ---
 
@@ -425,52 +455,29 @@ Split so a fresh session can see at a glance what still needs a human.
 
 ### Needs a decision or action
 
-**1. The purge does not yet clear message contents or status tokens —
-finish this before any real candidate is emailed.** Tech spec §10A.5 says
-`purge_expired` must null `application.status_token` and clear
-`message.to_email`, `subject` and `body`, keeping only `kind`, `status`
-and `sent_at`. **That is specified and not implemented.** Right now the
-risk is zero — `message` has no rows — but the moment mail is sent, a
-purged posting would leave candidates' names, addresses and the text they
-were sent sitting in the outbox, which breaks the promise the apply page
-makes. The status *page* is already safe (it checks `purged_at` and shows
-the expired-link copy), so this is specifically the outbox and the token.
-**And §11's rule applies: the purge job must be re-tested against a
-fixture after the change.**
+**1. Resolved 28 Aug — the purge keeps its M7 promises.** It now clears
+`message.to_email`, `subject` and `body` (keeping `kind`, `status`,
+`sent_at`) and nulls `application.status_token`. Re-tested against a
+fixture per §11: dry run changed nothing, commit cleared every field,
+the candidate with a live application elsewhere survived, and a second
+run reported zero.
 
-**2. Un-rejecting a candidate after the outcome was sent leaves them
-contradicted, silently.** Reject → send the outcome → move them back to
-Screened or Shortlisted, and the status page reverts to "Received" or
-"Shortlisted" immediately — while the rejection email still sits in their
-inbox. Nothing tells them the decision changed; they would only find out
-by refreshing a link they may never open again.
+**2. Resolved 28 Aug — the un-reject contradiction.** Moving off Rejected
+now offers to send the correction, and clears `outcome_sent_at` whether
+or not you send it, so FR-123's gate re-arms and a later rejection needs
+a fresh deliberate send. Verified end to end with a real email.
 
-This is the **inverse of the case PN-004 designed for.** That note's rule
-was "the page never tells a candidate something worse than what they have
-already been told", and the guard was built one-way. Better news
-delivered silently is not harmful the way worse news is, but it is
-confusing, it reads like a mistake, and it can raise hope nobody meant to
-raise.
+**3. Resolved 28 Aug — the transport is proven.** Three real emails sent
+end to end: a rejection, a reversal, and an interview invite whose
+booking link the user followed through to a real slot. See M7 above.
 
-**It compounds with an edge case:** `outcome_sent_at` is set once and
-never cleared, and is only consulted while the stage *is* `rejected`. So
-after an un-reject, a later re-rejection flips the page to "Not moving
-forward" **instantly, with no second email and no human gate** — the
-protection FR-123 exists to provide is spent after the first use.
+**3a. The apply confirmation (FR-117) has still never fired.** The only
+form application predates the mail setup. It is the first message every
+real candidate receives and the one remaining unproven path.
 
-Two small fixes, both worth doing together before the first real send:
-- **Moving off Rejected after an outcome was sent should offer to send an
-  update.** The `general_update` template exists for exactly this, and
-  Principle 4 — "every state change reaches the people it affects" —
-  says a reversal qualifies.
-- **Clear `outcome_sent_at` on that move**, so the gate re-arms and any
-  future rejection needs a fresh, deliberate send.
-
-Neither is large. Both only bite once real mail is going out, which is
-precisely the window this is being written in.
-
-**3. Resolved 28 Aug — the transport is proven.** The first real email
-sent end to end at 15:03 UTC, to a personal address. See M7 above.
+**3b. Production's send-check spins where local works.** Points at
+`SUPABASE_SERVICE_ROLE_KEY` on Vercel — the offer reads mail settings
+through the admin client. It would break every send offer in production.
 
 **4. A screening's "used a fallback" note is computed against today's
 provider order, so it lies after a reorder.** `getApplicationsForOpening`
