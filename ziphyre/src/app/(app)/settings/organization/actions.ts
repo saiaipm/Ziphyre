@@ -49,7 +49,10 @@ export async function saveOrganization(input: {
   primaryLocation: string;
   timezone: string;
   currency: string;
-  showSampleData: boolean;
+  // `showSampleData` is deliberately absent. It has its own control and
+  // its own action (`setShowSampleData` above), because a whole-form
+  // save would write a stale copy back over a change made from the
+  // header toggle on Home or Postings.
 }): Promise<SaveResult> {
   const session = await getSessionContext();
   if (!session) return { ok: false, error: "Not signed in." };
@@ -73,7 +76,6 @@ export async function saveOrganization(input: {
       primary_location: input.primaryLocation.trim() || null,
       timezone: input.timezone,
       currency: input.currency,
-      show_sample_data: input.showSampleData,
     })
     .eq("id", session.organization.id);
 

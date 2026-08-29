@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SIZE_BANDS, INDUSTRIES, CURRENCIES, TIMEZONES } from "@/lib/seed";
-import { saveOrganization } from "./actions";
+import { saveOrganization, setShowSampleData } from "./actions";
 
 export type OrgForm = {
   name: string;
@@ -25,11 +25,16 @@ export type OrgForm = {
   primaryLocation: string;
   timezone: string;
   currency: string;
-  /** FR-136/§10B */
-  showSampleData: boolean;
 };
 
-export function OrganizationForm({ initial }: { initial: OrgForm }) {
+export function OrganizationForm({
+  initial,
+  showSampleData,
+}: {
+  initial: OrgForm;
+  /** FR-136/§10B. Deliberately *not* part of `initial` — see below. */
+  showSampleData: boolean;
+}) {
   const [form, setForm] = useState<OrgForm>(initial);
   const [saving, setSaving] = useState(false);
 
@@ -185,22 +190,7 @@ export function OrganizationForm({ initial }: { initial: OrgForm }) {
         title="Sample data"
         description="A seeded, fabricated demo pipeline — never a real applicant, always marked wherever it shows."
       >
-        <label className="flex cursor-pointer items-start gap-3">
-          <Checkbox
-            checked={form.showSampleData}
-            onCheckedChange={(v) => set("showSampleData", v === true)}
-            className="mt-0.5"
-          />
-          <span className="text-sm">
-            Show sample data
-            <span className="block text-xs font-normal text-muted-foreground">
-              On by default so an empty workspace has something to explore.
-              Turning this off hides it from Home and Postings — nothing is
-              deleted, and turning it back on restores exactly what was
-              there.
-            </span>
-          </span>
-        </label>
+        <SampleDataCheckbox initial={showSampleData} />
       </Section>
 
       <div className="flex items-center gap-3">
@@ -209,6 +199,65 @@ export function OrganizationForm({ initial }: { initial: OrgForm }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * FR-136. Saves on the spot, exactly like the header toggle on Home and
+ * Postings — and deliberately outside this page's Save button.
+ *
+ * It used to be a field in `OrgForm`, saved with everything else. That
+ * made it the one setting with a second, independent control elsewhere
+ * in the product, and a whole-form Save writes every field it holds. So
+ * a Settings tab left open kept a stale copy: toggle on Home, come back
+ * to that tab, press Save for an unrelated change, and the stale value
+ * silently reverted you — last write wins, no conflict, no warning.
+ *
+ * Taking it out of the batch removes the hazard at its root rather than
+ * detecting it: there is no stale copy to write back, because the
+ * checkbox is no longer part of what Save sends. It also makes the
+ * control behave the same way in all three places it appears.
+ */
+function SampleDataCheckbox({ initial }: { initial: boolean }) {
+  const [on, setOn] = useState(initial);
+  const [saving, setSaving] = useState(false);
+
+  async function onChange(next: boolean) {
+    setOn(next);
+    setSaving(true);
+    const result = await setShowSampleData(next);
+    setSaving(false);
+
+    if (!result.ok) {
+      setOn(!next);
+      toast.error("Couldn't change that", { description: result.error });
+      return;
+    }
+    toast.success(next ? "Showing sample data" : "Sample data hidden", {
+      description: next
+        ? "The sample pipeline is back on Home and Postings."
+        : "Nothing was deleted — turn it back on any time.",
+    });
+  }
+
+  return (
+    <label className="flex cursor-pointer items-start gap-3">
+      <Checkbox
+        checked={on}
+        onCheckedChange={(v) => onChange(v === true)}
+        disabled={saving}
+        className="mt-0.5"
+      />
+      <span className="text-sm">
+        Show sample data
+        <span className="block text-xs font-normal text-muted-foreground">
+          On by default so an empty workspace has something to explore.
+          Turning this off hides it from Home and Postings — nothing is
+          deleted, and turning it back on restores exactly what was there.
+          Saved as soon as you change it, not with Save changes.
+        </span>
+      </span>
+    </label>
   );
 }
 
