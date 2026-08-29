@@ -1,11 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, ChevronDown, Download, Loader2 } from "lucide-react";
+import { CheckCircle2, Download, FileText, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   ApplicationFieldsSchema,
   RELOCATION_OPTIONS,
@@ -56,24 +63,18 @@ export function ApplyForm({
     openings.length === 1 ? openings[0].id : "",
   );
   /**
-   * Which JDs are expanded, independent of which role is selected — a
-   * candidate deciding between two roles wants to read both before
-   * picking either, so this is not tied to `openingId`.
+   * Which opening's JD the dialog shows, independent of which role is
+   * selected — a candidate deciding between two roles wants to read
+   * both before picking either, so opening the dialog does not touch
+   * `openingId`.
+   *
+   * Split from `jdDialogOpen` on purpose: Radix animates the close over
+   * ~100ms, and clearing this at the same moment the animation starts
+   * would blank the title and body while the panel is still visible.
+   * The last-viewed opening stays put; only the open flag changes.
    */
-  const [expandedJds, setExpandedJds] = useState<Set<string>>(
-    // A single opening has nothing to decide between, so its JD opens
-    // by default rather than costing an extra click.
-    new Set(openings.length === 1 ? [openings[0].id] : []),
-  );
-
-  function toggleJd(id: string) {
-    setExpandedJds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const [jdOpening, setJdOpening] = useState<Opening | null>(null);
+  const [jdDialogOpen, setJdDialogOpen] = useState(false);
 
   if (submitted) {
     return (
@@ -202,76 +203,57 @@ export function ApplyForm({
 
       <Field label="Which role are you applying for?" error={errors.openingId}>
         <div className="space-y-2">
-          {openings.map((o) => {
-            const open = expandedJds.has(o.id);
-            return (
-              <div
-                key={o.id}
-                className={cn(
-                  "overflow-hidden rounded-lg border transition-colors",
-                  openingId === o.id
-                    ? "border-primary bg-muted/50"
-                    : "border-border hover:bg-muted/30",
-                )}
-              >
-                <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
-                  <input
-                    type="radio"
-                    name="openingId"
-                    value={o.id}
-                    checked={openingId === o.id}
-                    onChange={() => setOpeningId(o.id)}
-                    className="mt-1"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium">
-                      {o.title}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {o.workLocation}
-                    </span>
+          {openings.map((o) => (
+            <div
+              key={o.id}
+              className={cn(
+                "flex items-center gap-2 rounded-lg border px-4 py-3 transition-colors",
+                openingId === o.id
+                  ? "border-primary bg-muted/50"
+                  : "border-border hover:bg-muted/30",
+              )}
+            >
+              <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+                <input
+                  type="radio"
+                  name="openingId"
+                  value={o.id}
+                  checked={openingId === o.id}
+                  onChange={() => setOpeningId(o.id)}
+                  className="mt-1"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{o.title}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {o.workLocation}
                   </span>
-                </label>
+                </span>
+              </label>
 
-                {/* Reading the JD before deciding which role to apply
-                    for is the ordinary path — this is why it sits under
-                    each option rather than only under the one selected. */}
-                <button
-                  type="button"
-                  onClick={() => toggleJd(o.id)}
-                  aria-expanded={open}
-                  className="flex w-full items-center gap-1.5 border-t border-border/60 px-4 py-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  <ChevronDown
-                    className={cn(
-                      "size-3.5 shrink-0 transition-transform",
-                      open && "rotate-180",
-                    )}
-                    aria-hidden
-                  />
-                  {open ? "Hide job description" : "View job description"}
-                </button>
-
-                {open && (
-                  <div className="border-t border-border/60 bg-background px-4 py-3">
-                    <div className="max-h-64 overflow-y-auto text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
-                      {o.jdContent}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => downloadJd(o)}
-                      className="mt-3 flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      <Download className="size-3.5" aria-hidden />
-                      Download job description
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+              {/* Reading the JD before deciding which role to apply for
+                  is the ordinary path, so this opens for any role — not
+                  only the one currently selected. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setJdOpening(o);
+                  setJdDialogOpen(true);
+                }}
+                className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+              >
+                <FileText className="size-3.5" aria-hidden />
+                JD
+              </button>
+            </div>
+          ))}
         </div>
       </Field>
+
+      <JdDialog
+        opening={jdOpening}
+        open={jdDialogOpen}
+        onOpenChange={setJdDialogOpen}
+      />
 
       <Field label="Full name" error={errors.fullName}>
         <Input name="fullName" autoComplete="name" />
@@ -373,6 +355,42 @@ export function ApplyForm({
         then deleted.
       </p>
     </form>
+  );
+}
+
+function JdDialog({
+  opening,
+  open,
+  onOpenChange,
+}: {
+  opening: Opening | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{opening?.title}</DialogTitle>
+        </DialogHeader>
+
+        <div className="max-h-[60vh] overflow-y-auto text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
+          {opening?.jdContent}
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => opening && downloadJd(opening)}
+          >
+            <Download className="size-3.5" aria-hidden />
+            Download
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
