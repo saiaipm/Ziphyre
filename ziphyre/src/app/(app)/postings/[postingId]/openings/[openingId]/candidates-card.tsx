@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { formatDay } from "@/lib/format-date";
 import { fitBand, passTone, FIT_FILL, FIT_TEXT } from "@/lib/fit-tone";
 import {
   Dialog,
@@ -487,6 +488,12 @@ export function CandidatesCard({
                       <TableHead className="text-center">Overall</TableHead>
                       <TableHead className="text-center">Must-haves</TableHead>
                       <TableHead>Stage</TableHead>
+                      {/* §8's column list has always ended with Received.
+                          The date filter and sort were built in M5 over
+                          `submitted_at`; the column itself never was, so
+                          you could filter and sort by a date the table
+                          never showed you. */}
+                      <TableHead>Received</TableHead>
                       <TableHead className="w-8">
                         <span className="sr-only">Actions</span>
                       </TableHead>
@@ -618,6 +625,7 @@ function ApplicationRow({
         <TableCell>
           <StageBadge stage={app.currentStage} />
         </TableCell>
+        <ReceivedCell app={app} />
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1">
             <RowStageMenu
@@ -662,7 +670,22 @@ function ApplicationRow({
         <TableCell>
           <StageBadge stage={app.currentStage} />
         </TableCell>
-        <TableCell />
+        <ReceivedCell app={app} />
+        {/* This cell was empty. A screening that never starts — a job
+            left queued because nothing pumped it — spun here forever
+            with no way out of it, which is the one state most in need
+            of a retry and the only one that didn't offer one. */}
+        <TableCell className="text-right">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            onClick={() => onRetry(app.id)}
+          >
+            <RotateCcw className="size-3.5" aria-hidden />
+            Retry
+          </Button>
+        </TableCell>
       </TableRow>
     );
   }
@@ -740,6 +763,8 @@ function ApplicationRow({
         <TableCell>
           <StageBadge stage={app.currentStage} />
         </TableCell>
+
+        <ReceivedCell app={app} />
 
         <TableCell className="text-right">
           <RowStageMenu
@@ -972,6 +997,24 @@ function Score({ label, value }: { label: string; value: number }) {
  * what makes the column worth showing: it is how you notice a CV that
  * does not belong to the person who sent it.
  */
+/**
+ * FR-53's "date received", the column §8 always listed and the table
+ * never had.
+ *
+ * Reads `submittedAt` — when the candidate actually applied — with
+ * `createdAt` as the fallback, exactly what M5's date filter and sort
+ * already read. Anything else would let the table disagree with the
+ * filter that claims to act on it.
+ */
+function ReceivedCell({ app }: { app: ApplicationListItem }) {
+  const when = app.submittedAt ?? app.createdAt;
+  return (
+    <TableCell className="text-sm whitespace-nowrap text-muted-foreground">
+      {formatDay(when)}
+    </TableCell>
+  );
+}
+
 function CvFileCell({ filename }: { filename: string | null }) {
   if (!filename) {
     return (
