@@ -390,6 +390,12 @@ running the exact filter expression both ways: with the toggle on,
 both the real posting and the sample one list; off, only the real one
 does.
 
+**That verified the filter, not the click** — and the gap between those
+two is exactly where a bug lived until 29 Aug. See "the toggle saved
+but never refreshed" below. Worth remembering as a pattern: proving the
+expression correct says nothing about whether the control wired to it
+moves anything on screen.
+
 **The toggle is in the header of Home and Postings**, beside "New
 posting", saving on the spot via `setShowSampleData`. It is *also* a
 checkbox in Settings → Organization, saved with that form. It shipped
@@ -508,6 +514,29 @@ touching the job queue:**
    rows were missing it; both backfilled by hand, and new manual
    uploads now generate one at insert.
 3. (Recorded above) the stale preview toggle.
+4. **The toggle saved but never refreshed the page it was on — found on
+   production, 29 Aug.** Clicking "Show sample data" on Home moved the
+   switch and wrote `show_sample_data = false` to the database, and the
+   sample posting stayed on screen with the counts still reading 16.
+   Reproducible in both directions; a manual reload showed the correct
+   10. Worse than a dead control: the toast read *"Sample data hidden —
+   Nothing was deleted"* over a screen still showing it, so a second
+   click left the database saying the opposite of the screen.
+
+   Cause: `setShowSampleData` called only `revalidatePath`, which
+   invalidates *cached* data. Home and Postings read this value through
+   the session cookie, so they render dynamically, have no cache entry
+   to invalidate, and the client router kept the tree it already had.
+   Fixed with **`refresh()` from `next/cache`** (Next 16's API for
+   exactly this, verified present in 16.3.1) alongside the existing
+   `revalidatePath`, which still earns its place for navigation to the
+   other path. `saveOrganization` deliberately left alone — it is a
+   Save button on a page the user stays on, and its effect is reached
+   by navigation, which `revalidatePath` does cover.
+
+   Verified by clicking, both call sites, both directions, with **no
+   reload**: 16 → 10 → 16, funnel reconciling each time, database
+   agreeing with the screen, no server errors.
 
 **What's still the user's own step, deliberately not done here:**
 retiring the seven real CVs. Irreversible, real people's data, on their
@@ -519,12 +548,22 @@ is unblocked whenever they want it. The FK chain is `stage_event` →
 
 **Start the next session here.**
 
-1. **Verify M8 on production.** It merged to `main` at the end of the
-   29 Aug session but was only ever exercised locally — the toggle, the
-   `Received` column, the retry on a stuck screening, and the pump fix
-   have not been clicked once against `ziphyre.vercel.app`. Today's
-   pattern held all session: everything that broke in production was
-   invisible locally.
+1. **Verify M8 on production — mostly done, and it paid for itself.**
+   Checked against `ziphyre.vercel.app` on the M8 merge commit: the
+   toggle in all three homes, the `SampleBadge`, the `Received` column
+   (populated, all three row states), the six sample candidates at
+   their recorded scores, FR-102 reconciling both ways (16 and 10), a
+   clean job queue (42 jobs, all `succeeded`, nothing orphaned), and
+   the public apply page still 200ing anonymously. The three runtime
+   error groups from 28 Aug are stale — each stops before its fix
+   shipped, none has recurred. **One real bug found, fixed and
+   verified: bug 4 above.**
+
+   **Still not clicked:** the retry on a stuck screening, because
+   there is no stuck screening — every job in the queue has succeeded.
+   Manufacturing one means either submitting a real application or
+   resetting a row by hand. It waits for a real one, or a deliberate
+   test.
 2. **Watch the first screening that arrives with nobody looking.** The
    pump regression is fixed and reproduced, but the underlying design
    is unchanged: screening still runs inside a request via `after()`,
@@ -615,11 +654,6 @@ primary again and answers in ~6s.
 | 0 | OpenAI | gpt-4o-mini |
 | 1 | Google Gemini | gemini-3.5-flash-lite |
 | 2 | NVIDIA NIM | openai/gpt-oss-20b |
-
----|---|---|---|
-| 0 | NVIDIA NIM | openai/gpt-oss-20b | j2WZ |
-| 1 | OpenAI | gpt-4o-mini | RnsA |
-| 2 | Google Gemini | gemini-3.5-flash-lite | preg |
 
 ---
 
@@ -945,6 +979,18 @@ Outstanding → "Load-bearing lines a cleanup would plausibly delete".)
 browser it starts a dev server on 3000, and your own `npm run dev` then
 fails with a port conflict. If it won't start and nothing looks broken,
 that is why — ask for the port back.
+
+**A second dev server cannot be started on another port, and the
+failure lies.** Next 16 takes a lock at `path.join(distDir, 'lock')`
+(`setup-dev-bundler.js`), keyed on **distDir, not port** — so a second
+`next dev` in this directory exits with "Another next dev server is
+already running" whatever port it is given. Changing `autoPort` in
+`.claude/launch.json` does not help: the harness reports "Server
+started successfully on port N" and hands over a port with nothing
+behind it, because the process already died. **Stopping the other
+server is the only fix** — the PID is named in the error, and the
+orphan often outlives the chat that started it. Confirmed 29 Aug after
+`autoPort` produced a phantom preview on port 60104.
 
 **Running it:** `npm run dev` from `ziphyre/`. The apply page lives at
 `/apply/<posting.apply_token>` — get the link from the posting page, or
