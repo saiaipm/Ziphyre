@@ -678,7 +678,10 @@ only the original address will work in production.
 
 **Mail sender configured and verified:** `ziphyre.ai@gmail.com`, Gmail
 SMTP app password, `verified_at` set — Gmail accepted it on a real
-connection. No booking link set yet.
+connection. **A booking link is now set** at organisation level
+(`mail_settings.booking_url`), inherited by both openings — neither
+overrides it, so FR-131's per-application resolution runs through the
+fallback rather than the override.
 
 **Providers configured**, in fallback order. **Reordered 28 Aug after
 NVIDIA was found not to respond at all from Vercel** — it burned the
@@ -901,6 +904,29 @@ and must `await` the work.**
 Tech spec §10's argument still stands and is untouched by this: screening
 should not run inside a request at all. This made the in-request design
 fail earlier and more quietly than expected, but it did not create it.
+
+**15. Fixed — the shortlist dialog's invite checkbox did nothing.**
+FR-107 has two ways in, and only the standalone one was ever wired up.
+The move dialog offered the invite correctly whenever the target stage
+was Shortlisted, the admin ticked it, and `sendOutcome: true` reached
+`changeApplicationStage` — which read that flag **only** for a move to
+`rejected` and for reversals. Anything else silently dropped it.
+
+So shortlisting with the box ticked moved the candidate, wrote the
+stage event, and queued nothing: no `message` row, no job, no email,
+and no error anywhere. Found 29 Aug the first time a real shortlist was
+performed. `sendInterviewInvites` — the standalone button on a
+shortlisted row — was always fine, which is why this survived M7's
+round of real sends.
+
+Worth naming the shape, because it is the same one as the missing
+`status_token`: **the UI offered something the server had no branch
+for.** A tickbox that mails a stranger and quietly does nothing is the
+worst way for that to fail, since the visible outcome is simply a
+candidate who never hears anything. The new branch is guarded on
+`reversedIds` being empty so precedence matches the dialog: a candidate
+moved off a rejection they were told about gets the correction, never
+an invite as well.
 
 **14. Fixed — Retry no longer double-screens.** `retryScreening` called
 `enqueueJob` unconditionally, never checking whether a

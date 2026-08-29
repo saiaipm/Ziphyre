@@ -1001,8 +1001,40 @@ export async function changeApplicationStage(input: {
     }
   }
 
+  // ---- Shortlisting, with the invite the dialog offered ---------------
+  //
+  // FR-107's first way in. This branch did not exist: the move dialog
+  // offers the invite whenever the target is Shortlisted, the admin
+  // ticks it, and `sendOutcome: true` arrived here to be silently
+  // dropped, because the flag was only ever read for `rejected` and for
+  // reversals. A checkbox that mails a stranger and does nothing is the
+  // worst version of this to get wrong — it fails quietly, and the
+  // candidate is simply never contacted. Found 29 Aug when the first
+  // real shortlist produced no `message` row at all.
+  //
+  // Guarded on `reversedIds` being empty so the precedence matches the
+  // dialog exactly: someone moved off a rejection they were *told*
+  // about gets the correction, not an invite, and must never get both
+  // from one action.
+  if (
+    input.sendOutcome &&
+    input.toStage === "shortlisted" &&
+    reversedIds.length === 0 &&
+    moved > 0
+  ) {
+    outcome = await queueOutcomeMessages({
+      organizationId: session.organization.id,
+      organisationName: session.organization.name,
+      applicationIds: movedIds,
+      sentBy: session.userId,
+      kind: "invite",
+    });
+    if (outcome.queued > 0) pumpJobsAfterResponse(["send_message"]);
+  }
+
   revalidatePath(`/postings/${input.postingId}/openings/${input.openingId}`);
   revalidatePath("/");
+  revalidatePath("/communications");
 
   if (moved === 0) {
     return {
