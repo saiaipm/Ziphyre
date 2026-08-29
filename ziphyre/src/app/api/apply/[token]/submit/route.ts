@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { after } from "next/server";
+import { randomBytes } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { runQueuedJobs } from "@/lib/jobs/runner";
@@ -146,6 +147,15 @@ export async function POST(
       source: "apply",
       source_status: "present",
       submitted_at: new Date().toISOString(),
+      // FR-124. Without this the confirmation email below carries
+      // `/status/null` and the candidate's only way to check where they
+      // stand is dead on arrival. The column is nullable (the purge
+      // nulls it, §10A.5) and has no database default, so every insert
+      // has to supply one — this path never did. Existing apply rows
+      // had tokens only because M7's migration backfilled them once,
+      // which is exactly what hid this: the backfill made the bug
+      // invisible on every row that already existed.
+      status_token: randomBytes(32).toString("base64url"),
       form_answers: {
         currentLocation: f.currentLocation,
         willingnessToRelocate: f.willingnessToRelocate,
@@ -214,7 +224,15 @@ export async function POST(
           posting.openings.find((o) => o.id === f.openingId)?.title ??
           "the role",
         organisationName: posting.organizationName,
-        statusLink: statusUrl(application.status_token),
+        // Guarded like every other `statusLink` in the codebase. The
+        // insert above now always supplies a token, so this should not
+        // fire — but an unguarded `statusUrl(null)` is what rendered
+        // the literal string "null" into a real candidate's email, and
+        // an empty link is a far cheaper failure than a confident link
+        // to nowhere.
+        statusLink: application.status_token
+          ? statusUrl(application.status_token)
+          : "",
       },
       sentBy: null,
     });

@@ -772,9 +772,29 @@ a fresh deliberate send. Verified end to end with a real email.
 end to end: a rejection, a reversal, and an interview invite whose
 booking link the user followed through to a real slot. See M7 above.
 
-**3a. The apply confirmation (FR-117) has still never fired.** The only
-form application predates the mail setup. It is the first message every
-real candidate receives and the one remaining unproven path.
+**3a. Resolved — and it fired broken.** FR-117 sent for real on 29 Aug,
+and the link it carried was `https://ziphyre.vercel.app/status/null`.
+**The apply route never generated a `status_token`.** The insert omitted
+the column, and `statusUrl(application.status_token)` was the one call
+site in the codebase without a null guard, so `null` rendered into a
+real candidate's email as the literal string.
+
+This is the **third** appearance of the same FR-124 failure: the
+template with no `{{statusLink}}` (28 Aug), manual upload with no token
+(M8), and now the apply page — the path every real candidate uses. Each
+fix addressed the instance in front of it rather than the class. What
+hid this one was M7's migration backfilling every apply row that already
+existed, so the bug was invisible on all of them and only a *new*
+application could show it.
+
+Both halves are fixed: the insert generates a token, and the call site
+is guarded like every other. **The status page's copy was the worse
+half** — it told a candidate whose application was alive and screened
+that it "has been deleted, as promised when you applied." It cannot
+distinguish a purged row from an unknown token (the purge nulls the
+token, so a purged row cannot be found by token at all) and it must not
+try, since that would confirm which tokens are real. The copy is now
+true of both cases and asserts no deletion.
 
 **3b. Production's send-check spins where local works.** Points at
 `SUPABASE_SERVICE_ROLE_KEY` on Vercel — the offer reads mail settings
@@ -845,6 +865,47 @@ revisit only if the pattern repeats. See `TechDecisions.md` §7.
 **12. A scanned-PDF fixture still does not exist.** FR-47 is proven via the
 `.doc` path, but no image-only PDF has been tried. Low priority now the path
 itself works.
+
+**13. The apply route's `after()` pump did no work — observed, 29 Aug.**
+The first real end-to-end apply test. The submit request logged **no
+`[pdf]` or `[ai]` lines at all**: its pump ran and screened nothing. The
+`screen_application` job sat `queued` at `attempts = 0` from 11:41:06
+until **11:42:36**, when a pump triggered by the admin clicking Retry
+finally claimed it — 90 seconds, and only because a person was watching.
+With nobody there it would have waited for the **daily** cron.
+
+This is not the M8 pump regression returning: that was a `kinds` filter
+excluding screenings, and this route passes both kinds. The cause is
+undiagnosed, and deliberately hard to see — `runQueuedJobs(...).catch(()
+=> {})` in the apply route swallows every error the pump can raise, so a
+failure there produces silence rather than a log line. **Start by
+removing that swallow**, or by logging in the `catch`; there is no point
+theorising while the one thing that would say what happened is being
+discarded.
+
+The real fix is the one tech spec §10 already argues: screening should
+not run inside a request. This is the strongest evidence yet for it, and
+the second-strongest argument for a paid plan after the daily cron cap.
+
+**14. Retry enqueues a second screening with no guard, and the two runs
+disagree.** `retryScreening` calls `enqueueJob` unconditionally — it
+never checks whether a `screen_application` job is already `queued` for
+that application. So Retry on a screening that is merely *slow* rather
+than dead creates a duplicate, and the pump then runs both, in the same
+invocation.
+
+Observed 29 Aug: two parses of the same 5172 characters, two model
+calls (4646ms, 3403ms), and **two `screening` rows — 9.0 and 8.6** for
+one CV against one JD on one model. The components differed too (skills
+9 vs 7). The later row wins `current_screening_id`, so the score on
+screen came from the duplicate.
+
+Two separate things to fix, and worth not conflating: Retry should not
+queue a second job when one is already pending (re-pump instead), and
+**a candidate can score differently on two runs of the same model** —
+which matters for FR-49's promise that two scores can be compared
+honestly. The second is a property of the model, not a bug, but nothing
+in the product currently says so.
 
 ### Deliberate deviations, recorded so they are not mistaken for oversights
 

@@ -62,7 +62,21 @@ export default async function StatusPage({
   const status = await getCandidateStatus(token);
 
   // FR-125. A link the candidate bookmarked deserves an explanation
-  // rather than a 404 — the data is gone because we said it would be.
+  // rather than a 404.
+  //
+  // This cannot tell a purged application from a token that never
+  // existed, and by design: the purge *nulls* `status_token`
+  // (§10A.5), so a purged row can no longer be found by token at all
+  // — both cases arrive here as "no row". Distinguishing them would
+  // also mean confirming which tokens are real to anyone guessing.
+  //
+  // So the copy must be true of both. It used to assert the
+  // application "has been deleted", which on 29 Aug 2026 was said to
+  // a candidate whose application was alive and screened — the email
+  // had carried `/status/null` because the apply route never
+  // generated a token. Stating a deletion that did not happen is the
+  // worse half of that bug, and it would outlive the missing token
+  // for any mistyped or truncated link.
   if (!status) {
     return (
       <Shell>
@@ -71,10 +85,13 @@ export default async function StatusPage({
             className="mx-auto size-8 text-muted-foreground"
             aria-hidden
           />
-          <h1 className="mt-3 text-lg font-semibold">This link has expired</h1>
+          <h1 className="mt-3 text-lg font-semibold">
+            We couldn&rsquo;t find this application
+          </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            The application it pointed to has been deleted, as promised when
-            you applied.
+            If you applied a while ago, your details may have been deleted, as
+            promised when you applied. Otherwise the link may be incomplete —
+            it&rsquo;s worth checking it against the email you received.
           </p>
         </div>
       </Shell>
