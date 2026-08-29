@@ -369,9 +369,12 @@ sending to a real inbox rather than trusting a green build:
 **M7 is done, and every message kind has now been sent for real** —
 `application_received` fired at 05:53 on 29 Aug (the last unproven
 path; it had never run because the only form application predated the
-mail setup). All five rows in `message` are `sent` with no errors:
+mail setup). All five rows in `message` were `sent` with no errors:
 rejection, reversal, interview invite, apply confirmation, and a second
-rejection.
+rejection. **Those rows no longer exist** — they cascaded when the real
+pipeline was retired later that day, so this paragraph is now the only
+record that every kind has fired. The code paths are unchanged and
+still proven; what is gone is the evidence, not the capability.
 
 **M8 (sample data) — done and merged to `main`, 29 Aug 2026.** PN-005,
 functional spec Draft 10 (FR-136 – FR-141), tech spec Draft 10 (§10B).
@@ -389,6 +392,12 @@ sample posting everywhere it appears. Verified against real data by
 running the exact filter expression both ways: with the toggle on,
 both the real posting and the sample one list; off, only the real one
 does.
+
+**That verified the filter, not the click** — and the gap between those
+two is exactly where a bug lived until 29 Aug. See "the toggle saved
+but never refreshed" below. Worth remembering as a pattern: proving the
+expression correct says nothing about whether the control wired to it
+moves anything on screen.
 
 **The toggle is in the header of Home and Postings**, beside "New
 posting", saving on the spot via `setShowSampleData`. It is *also* a
@@ -508,23 +517,87 @@ touching the job queue:**
    rows were missing it; both backfilled by hand, and new manual
    uploads now generate one at insert.
 3. (Recorded above) the stale preview toggle.
+4. **The toggle saved but never refreshed the page it was on — found on
+   production, 29 Aug.** Clicking "Show sample data" on Home moved the
+   switch and wrote `show_sample_data = false` to the database, and the
+   sample posting stayed on screen with the counts still reading 16.
+   Reproducible in both directions; a manual reload showed the correct
+   10. Worse than a dead control: the toast read *"Sample data hidden —
+   Nothing was deleted"* over a screen still showing it, so a second
+   click left the database saying the opposite of the screen.
 
-**What's still the user's own step, deliberately not done here:**
-retiring the seven real CVs. Irreversible, real people's data, on their
-own timeline. The sample pipeline now exists to replace them, so this
-is unblocked whenever they want it. The FK chain is `stage_event` →
-`screening` → `application` → `candidate`, all cascading from
-`posting` (tech spec Draft 3) — plus the Storage objects under
-`cvs/<org>/<application>/`, which cascade deletes do **not** remove.
+   Cause: `setShowSampleData` called only `revalidatePath`, which
+   invalidates *cached* data. Home and Postings read this value through
+   the session cookie, so they render dynamically, have no cache entry
+   to invalidate, and the client router kept the tree it already had.
+   Fixed with **`refresh()` from `next/cache`** (Next 16's API for
+   exactly this, verified present in 16.3.1) alongside the existing
+   `revalidatePath`, which still earns its place for navigation to the
+   other path. `saveOrganization` deliberately left alone — it is a
+   Save button on a page the user stays on, and its effect is reached
+   by navigation, which `revalidatePath` does cover.
+
+   Verified by clicking, both call sites, both directions, with **no
+   reload**: 16 → 10 → 16, funnel reconciling each time, database
+   agreeing with the screen, no server errors.
+
+**The real CVs are retired — done 29 Aug 2026, on the user's
+instruction.** This had been carried as their own step since M8:
+irreversible, real people's data, on their own timeline. They called
+it, to clear the pipeline for an end-to-end apply test.
+
+`ziphyre/scripts/retire-real-cvs.ts`, **dry run unless `--commit`** —
+the same asymmetry `purge.ts` uses, for the same reason. It deletes
+through `admin.storage.from("cvs").remove()` and the Supabase client
+rather than raw SQL, because `DELETE FROM storage.objects` drops the
+metadata row and can leave the file itself behind, which for a real
+candidate's CV is not deletion at all. Order is load-bearing: collect
+paths → remove objects → delete rows, since the reverse loses the
+paths.
+
+**Ten applications went, not seven.** The seven real CAs plus three
+test applications — and two of those tests carried *real people's
+CVs* under a test name, so they were never merely synthetic. With
+them: 25 screenings, 18 stage events, 10 candidates, and **all five
+`message` rows**, because `message.application_id` is `NOT NULL` with
+`ON DELETE CASCADE`. The outbox could not be kept while zeroing the
+pipeline; the user was told and chose the clean slate. M7's proof that
+every message kind sent for real now lives only in this document.
+
+**Two already-orphaned Storage objects were found and swept** —
+`fake-legacy-cv.doc` and an `Anita_Desai_CV.pdf` whose applications had
+been deleted earlier. Exactly the failure the old note here predicted:
+cascade deletes never touch Storage, so real CV data accumulates with
+nothing pointing at it and nothing reporting it. **Any future hard
+delete of an application must remove its object first** — and the
+script's orphan sweep is worth re-running after any such deletion.
+
+Verified by re-reading the database, not by trusting the writes: 0
+applications on the real openings, 0 messages, 6 storage objects (the
+sample CVs), 6 candidates. The posting, both openings, 3 JD versions,
+29 requirements and the apply token all survive, and the apply page
+renders both roles — so the pipeline is at zero without being
+dismantled. The 42 `job` rows are kept as history; they have no FK to
+`application`, so their payloads now name ids that are gone.
 
 **Start the next session here.**
 
-1. **Verify M8 on production.** It merged to `main` at the end of the
-   29 Aug session but was only ever exercised locally — the toggle, the
-   `Received` column, the retry on a stuck screening, and the pump fix
-   have not been clicked once against `ziphyre.vercel.app`. Today's
-   pattern held all session: everything that broke in production was
-   invisible locally.
+1. **Verify M8 on production — mostly done, and it paid for itself.**
+   Checked against `ziphyre.vercel.app` on the M8 merge commit: the
+   toggle in all three homes, the `SampleBadge`, the `Received` column
+   (populated, all three row states), the six sample candidates at
+   their recorded scores, FR-102 reconciling both ways (16 and 10), a
+   clean job queue (42 jobs, all `succeeded`, nothing orphaned), and
+   the public apply page still 200ing anonymously. The three runtime
+   error groups from 28 Aug are stale — each stops before its fix
+   shipped, none has recurred. **One real bug found, fixed and
+   verified: bug 4 above.**
+
+   **Still not clicked:** the retry on a stuck screening, because
+   there is no stuck screening — every job in the queue has succeeded.
+   Manufacturing one means either submitting a real application or
+   resetting a row by hand. It waits for a real one, or a deliberate
+   test.
 2. **Watch the first screening that arrives with nobody looking.** The
    pump regression is fixed and reproduced, but the underlying design
    is unchanged: screening still runs inside a request via `after()`,
@@ -581,19 +654,21 @@ purge nulls it, §10A.5) and `outcome_sent_at`; `opening` gained
 
 | Posting | Opening | Applications |
 |---|---|---|
-| Finance Hiring, Demo | Chartered Accountant | 9 — 2 Shortlisted, 5 Screened, 2 Rejected |
-| Finance Hiring, Demo | Accounts Executive | 1 Screened |
+| Finance Hiring, Demo | Chartered Accountant | **0** — cleared 29 Aug |
+| Finance Hiring, Demo | Accounts Executive | **0** — cleared 29 Aug |
 | **Sample pipeline — Chartered Accountant** (`is_sample`) | Chartered Accountant | 6 Screened — the fabricated set |
 
-**Seven of those sixteen are real people's CVs** — the original CA
-applicants on the non-sample posting. Retiring them is the outstanding
-manual step above.
+**No real person's data is left in the product.** The ten applications
+on the non-sample posting were retired 29 Aug (see above); the six that
+remain are fabricated. That posting keeps its openings, 3 JD versions,
+29 requirements and its apply token, so it is empty rather than
+dismantled — ready for an end-to-end apply test from zero.
 
-Every application carries a `status_token`. `message` holds **5 sent
-rows, no failures** (rejection, reversal, interview invite, apply
-confirmation, rejection). `message_template` is still empty, which is
-correct: defaults live in code until a customer edits one, and none
-has been.
+Every application carries a `status_token`. **`message` is empty**: all
+five sent rows cascaded with the applications they belonged to, so the
+outbox reads zero until the next send. `message_template` is still
+empty too, which is correct: defaults live in code until a customer
+edits one, and none has been.
 
 **Two admins**, both active in the same organisation:
 `saiphanimba09@gmail.com` (original) and **`ziphyre.ai@gmail.com` (the
@@ -615,11 +690,6 @@ primary again and answers in ~6s.
 | 0 | OpenAI | gpt-4o-mini |
 | 1 | Google Gemini | gemini-3.5-flash-lite |
 | 2 | NVIDIA NIM | openai/gpt-oss-20b |
-
----|---|---|---|
-| 0 | NVIDIA NIM | openai/gpt-oss-20b | j2WZ |
-| 1 | OpenAI | gpt-4o-mini | RnsA |
-| 2 | Google Gemini | gemini-3.5-flash-lite | preg |
 
 ---
 
@@ -945,6 +1015,18 @@ Outstanding → "Load-bearing lines a cleanup would plausibly delete".)
 browser it starts a dev server on 3000, and your own `npm run dev` then
 fails with a port conflict. If it won't start and nothing looks broken,
 that is why — ask for the port back.
+
+**A second dev server cannot be started on another port, and the
+failure lies.** Next 16 takes a lock at `path.join(distDir, 'lock')`
+(`setup-dev-bundler.js`), keyed on **distDir, not port** — so a second
+`next dev` in this directory exits with "Another next dev server is
+already running" whatever port it is given. Changing `autoPort` in
+`.claude/launch.json` does not help: the harness reports "Server
+started successfully on port N" and hands over a port with nothing
+behind it, because the process already died. **Stopping the other
+server is the only fix** — the PID is named in the error, and the
+orphan often outlives the chat that started it. Confirmed 29 Aug after
+`autoPort` produced a phantom preview on port 60104.
 
 **Running it:** `npm run dev` from `ziphyre/`. The apply page lives at
 `/apply/<posting.apply_token>` — get the link from the posting page, or

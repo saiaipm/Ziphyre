@@ -30,8 +30,8 @@ export default async function OrganizationSettingsPage() {
           primaryLocation: org.primary_location ?? "",
           timezone: org.timezone ?? "Asia/Kolkata",
           currency: org.currency ?? "INR",
-          showSampleData: org.show_sample_data,
         }}
+        showSampleData={org.show_sample_data}
       />
     </div>
   );

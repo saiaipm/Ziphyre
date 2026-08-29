@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, refresh } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/session";
 
@@ -27,6 +27,16 @@ export async function setShowSampleData(show: boolean): Promise<SaveResult> {
   revalidatePath("/");
   revalidatePath("/postings");
   revalidatePath("/settings/organization");
+  // `revalidatePath` invalidates *cached* data. Home and Postings read
+  // this value through the session cookie, so they render dynamically
+  // and have no cache entry to invalidate — the client router simply
+  // kept the tree it already had. The write landed, the switch moved,
+  // and the sample posting stayed on screen underneath a toast saying
+  // it was hidden. Found on production 29 Aug; invisible locally,
+  // because what was verified before was the filter expression rather
+  // than the click. `refresh()` is what re-renders the page the toggle
+  // is actually sitting on.
+  refresh();
   return { ok: true };
 }
 
@@ -39,7 +49,10 @@ export async function saveOrganization(input: {
   primaryLocation: string;
   timezone: string;
   currency: string;
-  showSampleData: boolean;
+  // `showSampleData` is deliberately absent. It has its own control and
+  // its own action (`setShowSampleData` above), because a whole-form
+  // save would write a stale copy back over a change made from the
+  // header toggle on Home or Postings.
 }): Promise<SaveResult> {
   const session = await getSessionContext();
   if (!session) return { ok: false, error: "Not signed in." };
@@ -63,7 +76,6 @@ export async function saveOrganization(input: {
       primary_location: input.primaryLocation.trim() || null,
       timezone: input.timezone,
       currency: input.currency,
-      show_sample_data: input.showSampleData,
     })
     .eq("id", session.organization.id);
 
