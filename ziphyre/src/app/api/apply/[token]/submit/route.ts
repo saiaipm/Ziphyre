@@ -243,10 +243,31 @@ export async function POST(
   await recordAttempt(posting.postingId, ipHash);
 
   // Screening runs after the response is sent, never during it (FR-96).
-  after(() => {
-    runQueuedJobs({ kinds: ["screen_application", "send_message"] }).catch(
-      () => {},
-    );
+  //
+  // **The callback must be async and must await.** `after` keeps the
+  // invocation alive only for what the callback *returns*: it does
+  // `await callback()` and hands that to `waitUntil`
+  // (`after-context.js`). A synchronous callback that starts a promise
+  // and returns undefined therefore settles instantly, and Vercel
+  // freezes the function with the work still in flight.
+  //
+  // This was written as `after(() => { runQueuedJobs(...).catch(() =>
+  // {}) })`, which is exactly that shape. On 29 Aug the first real
+  // application through this route logged no `[pdf]` or `[ai]` line at
+  // all and its `screen_application` job sat `queued` at `attempts = 0`
+  // for 90 seconds, until an admin clicking Retry triggered a pump from
+  // a Server Action — where the callback *is* async — that swept it.
+  // With nobody watching it would have waited for the daily cron.
+  after(async () => {
+    try {
+      await runQueuedJobs({ kinds: ["screen_application", "send_message"] });
+    } catch (err) {
+      // Logged, not swallowed. The old `.catch(() => {})` meant a pump
+      // that failed here produced silence, so the one thing that would
+      // have explained the stall was being discarded. Still non-fatal:
+      // the job stays queued and the cron is the backstop (FR-118).
+      console.error("[apply] job pump failed", err);
+    }
   });
 
   return NextResponse.json({ ok: true }, { status: 201 });

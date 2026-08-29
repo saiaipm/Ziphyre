@@ -143,8 +143,24 @@ export async function retryMessage(messageId: string): Promise<ActionResult> {
     return { ok: false, error: "Couldn't queue the retry. Please try again." };
   }
 
-  after(() => {
-    runQueuedJobs({ kinds: ["send_message"] }).catch(() => {});
+  // Async and awaited — see the note in `api/apply/[token]/submit`.
+  // `after` extends the invocation only for what the callback returns,
+  // so the fire-and-forget form this used to have meant FR-111's Retry
+  // queued the message and then let the function freeze before it was
+  // sent: the row went back to `queued` and waited for the daily cron,
+  // which reads to the admin as a Retry that did nothing.
+  //
+  // `send_message` leads because that is what the admin just asked for,
+  // but the second pass sweeps everything: per the 29 Aug pump
+  // regression, ordering is a legitimate optimisation and exclusion
+  // silently orphans other kinds' work.
+  after(async () => {
+    try {
+      await runQueuedJobs({ kinds: ["send_message"] });
+      await runQueuedJobs({ kinds: ["screen_application", "send_message"] });
+    } catch (err) {
+      console.error("[communications] job pump failed", err);
+    }
   });
 
   revalidatePath("/communications");

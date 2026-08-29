@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionContext } from "@/lib/session";
 import { getProviderChain } from "@/lib/provider-settings";
 import { extractRequirements } from "@/lib/ai/extract-requirements";
@@ -671,10 +672,41 @@ export async function retryScreening(applicationId: string): Promise<ActionResul
     .single();
   if (error) return { ok: false, error: error.message };
 
-  await enqueueJob(session.organization.id, "screen_application", {
-    applicationId,
-    reason: "retry",
-  });
+  // Only queue a *new* job if nothing is already waiting for this
+  // application. Retry exists for a screening that is stuck, but the
+  // admin cannot tell "stuck" from "slow" — the row says "Screening…"
+  // either way — so the common case is pressing it on work that was
+  // always going to run.
+  //
+  // Unguarded, that screens the same CV twice. On 29 Aug it did: two
+  // parses of the same 5172 characters, two model calls, and two
+  // `screening` rows scoring 9.0 and 8.6 for one CV against one JD on
+  // one model. The later row wins `current_screening_id`, so the score
+  // the admin ends up reading is the duplicate's — and since scores are
+  // immutable (§7) the first is kept forever with nothing pointing at
+  // it.
+  //
+  // A pending job plus a pump is the right response to "slow": it costs
+  // nothing and rescues a genuinely orphaned job just as well, because
+  // the pump claims whatever is queued.
+  // The admin client, because `job` carries no client policy at all
+  // (tech spec §3) — the user's own client cannot read this table.
+  const admin = createAdminClient();
+  const { data: pending, error: pendingError } = await admin
+    .from("job")
+    .select("id")
+    .eq("kind", "screen_application")
+    .eq("status", "queued")
+    .contains("payload", { applicationId })
+    .limit(1);
+  if (pendingError) return { ok: false, error: pendingError.message };
+
+  if (!pending || pending.length === 0) {
+    await enqueueJob(session.organization.id, "screen_application", {
+      applicationId,
+      reason: "retry",
+    });
+  }
 
   pumpJobsAfterResponse();
 
