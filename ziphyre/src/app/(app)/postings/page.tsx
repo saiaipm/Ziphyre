@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Plus, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SampleBadge } from "@/components/sample-badge";
 import { getPostingsForOrg } from "@/lib/postings";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +87,7 @@ function PostingRow({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
           <h3 className="text-sm font-semibold">{posting.name}</h3>
+          {posting.isSample && <SampleBadge />}
           {isClosed && (
             <Badge
               variant="secondary"

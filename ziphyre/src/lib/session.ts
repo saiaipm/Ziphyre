@@ -11,6 +11,8 @@ export type Organization = {
   primary_location: string | null;
   timezone: string;
   currency: string;
+  /** FR-137/§10B. Defaults true — see the m8_sample_data migration. */
+  show_sample_data: boolean;
 };
 
 export type SessionContext = {
@@ -38,7 +40,7 @@ export async function getSessionContext(): Promise<SessionContext | null> {
   const { data: membership } = await supabase
     .from("membership")
     .select(
-      "organization:organization_id (id, name, legal_name, website, industry, size_band, primary_location, timezone, currency)",
+      "organization:organization_id (id, name, legal_name, website, industry, size_band, primary_location, timezone, currency, show_sample_data)",
     )
     .eq("user_id", user.id)
     .eq("status", "active")

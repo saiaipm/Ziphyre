@@ -1,8 +1,8 @@
 # Tech Spec — Screening Desk
 
-**Implements:** `docs/functional-specs/admin-dashboard-intake-screening.md` (Draft 6)
-**Built on:** `TechDecisions.md` (Draft 7), `ProductNotes/PN-002-native-application-form.md`
-**Status:** Draft 6 · 27 August 2026
+**Implements:** `docs/functional-specs/admin-dashboard-intake-screening.md` (Draft 10)
+**Built on:** `TechDecisions.md` (Draft 7), `ProductNotes/PN-002-native-application-form.md`, `ProductNotes/PN-005-sample-demo-data.md`
+**Status:** Draft 10 · 29 August 2026
 
 Requirement references are **FR-n** from the functional spec. Where this document decides something the functional spec left open, it is marked **[new decision]**.
 
@@ -802,9 +802,60 @@ than leaving it to be discovered at send time.
 | `restoreTemplateDefault(kind)` | Insert the code default as a new version |
 | `loadPreviewVars(applicationId?)` | Real values for the preview |
 
-**Open scope.** This slice is templates only. FR-133's outbox shares the
-`/communications` page and is specified but unbuilt; the page is
-introduced here and grows the outbox next.
+**Built same day.** FR-133's outbox now shares the `/communications`
+page alongside the editor, with retry (FR-111) — `lib/mail/outbox.ts`
+and `communications/outbox-table.tsx`. M7 is complete.
+
+---
+
+## 10B. Sample data (FR-136 – FR-141, PN-005)
+
+**One migration, two columns.**
+
+```sql
+alter table public.posting add column is_sample boolean not null default false;
+alter table public.organization add column show_sample_data boolean not null default true;
+```
+
+`is_sample` lives on `posting`, not `opening` or `candidate`. Both
+`getPostingsForOrg()` and `getOverviewMetrics()` already fetch at the
+posting level and derive every opening id and application count from
+that one fetch (§9's pattern of computing summaries from an array
+already in hand, not a second query) — filtering the posting fetch is
+the single point that reaches Home, the Postings index, and the funnel
+at once.
+
+`show_sample_data` defaults `true` so a brand-new organisation with
+nothing real yet has something to explore (FR-137). Backfilling `true`
+on existing organisations is safe specifically because no sample
+posting exists yet to reveal — the column and the seeded content ship
+in the same change.
+
+**Filtered in application code, not RLS.** RLS answers "which
+organisation can see this row" — a tenant boundary, and `posting_all`'s
+existing policy already settles that correctly regardless of
+`is_sample`. This is a different question — "does this organisation
+want to see this row right now" — decided per request from a column
+already on `session.organization` (added to the explicit select list in
+`session.ts`, the one place a new organisation column would otherwise
+go unnoticed). `getPostingsForOrg()` and `getOverviewMetrics()` both
+filter the same way: fetch, then `showSampleData ? all : all.filter(p
+=> !p.is_sample)`, before either result is used for anything else —
+`getOverviewMetrics()` filters *before* deriving `openingIds`,
+specifically because every downstream number depends on that array.
+
+**The purge job needs no change.** §11's warn and expiry queries both
+require `status = 'closed'` and `purge_after is not null`. A sample
+posting left open indefinitely never enters either query; it only
+becomes reachable if someone deliberately closes it, which is the
+correct behaviour for a sample posting exactly as it is for a real one.
+
+**A sample candidate is screened for real.** Extraction, must-have
+marking, the model call, the fallback chain — all the same path a real
+candidate's CV takes. `screening` has no update policy, seeded or not;
+nothing in this feature writes a score directly. A sample candidate's
+placeholder email follows the existing manual-upload convention
+(`manual+<uuid>@ziphyre.internal`) rather than inventing a new one.
 
 ---
 
@@ -948,6 +999,7 @@ Retired ranges are listed rather than removed. The numbers are never reused, so 
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 10 | 29 Aug 2026 | **§10B added — sample data (FR-136 – FR-141, PN-005).** Every candidate in the product until now was a real person; that stops being acceptable the moment anyone outside this project sees a demo. `posting.is_sample` and `organization.show_sample_data` — the latter defaulting true so a brand-new org has something to explore — let an org show or hide a seeded pipeline without ever deleting it. Filtered in application code (`getPostingsForOrg()`, `getOverviewMetrics()`) rather than RLS, because this is a display preference per request, not a tenant boundary. **A sample candidate's score still comes from the real screening pipeline** — TechDecisions §7's rule that a score is never authored by hand gets no exception for being fake data |
 | Draft 9 | 28 Aug 2026 | **§10A.7 added — template editing (FR-126 – FR-129), specified after FR-110 shipped.** The plumbing already existed: `getTemplate()` reads the latest version and falls back to the code defaults, and `message_template` has no update policy, so FR-129 is enforced by absence exactly as `screening` and `jd_version` are. Three decisions the requirement does not settle. **Restore-to-default inserts a copy of the default as a new version rather than deleting** — `message.template_id` references these rows, so deleting a version would break the record of which wording reached a real person; keeping FR-129's promise costs one row. **Unknown variables are caught in the editor, not at send time**: `render()` deliberately leaves an unrecognised `{{token}}` as literal text so a typo fails visibly, but without a check "visibly" means visible to the candidate — `usedVariables()` already reports what a template references. **Concurrent saves collide on `(organization_id, kind, version)` by design** and must be surfaced as "someone else saved a new version" rather than a constraint error. Also records the property FR-129 actually rests on, which is invisible in the editor: `queueMessage()` renders at queue time and stores the rendered body, so editing a template never alters a message already queued or sent. Found while shipping FR-110: the default `outcome_rejected` template carried no `{{statusLink}}`, breaking FR-124 outright — caught by reading the send preview, not by typecheck, lint or a production build |
 | Draft 8 | 28 Aug 2026 | **§10A added — candidate communications (PN-004, functional spec Draft 9).** Mail goes over SMTP with an app password behind a single `send()` interface, because the Gmail API's `gmail.send` is a restricted scope and PN-002 established that one such scope re-gates the whole consent screen. Sending is a `send_message` job queued **per recipient**, so a failure is attributable to the candidate it was meant for and inherits the existing backoff. `message` stores the **rendered** body rather than only a template id, since FR-129's promise that what was said stays recoverable dies the moment a template is edited. `application.outcome_sent_at` exists so FR-123's gate is one column read on an anonymous request rather than a join. The status page joins `/apply` in the proxy's public-path list — omitting it 404s every status link in production while working locally — and its query deliberately does not fetch score columns at all, because the safest way to honour Non-Goal 9 is to be unable to leak it. Retention grows a second obligation: the purge nulls the status token and clears message contents, which means **the purge job must be re-tested before it runs again** |
 | Draft 7 | 27 Aug 2026 | **M4's stage transitions built (FR-56 – FR-60).** Two security-definer functions join `record_screening` for the same structural reason §2.2 gives: `record_stage_change` writes the history row and moves the pointer in one transaction, and `reassign_application` checks the posting, the self-move and the `(opening_id, candidate_id)` collision under a row lock rather than from the application layer, so two admins racing cannot both pass a pre-check. Both check membership themselves — unlike `record_screening` they are reachable from a Server Action with a user-supplied id, and definer rights would otherwise cross tenants. Three decisions recorded beyond §9: **disposition is constrained in the database**, to FR-58's six values and to On hold / Rejected only, because an invented value would quietly corrupt FR-71's export column; **a no-op move writes no history**, since batch actions make "Rejected → Rejected" easy to produce by accident and §9's own audit trail is the one place that has to stay readable; and **reassignment is not a `stage_event`** — the stage does not change, and a synthetic row would break FR-102's arithmetic. Adds the stage filter FR-66 always specified but which was meaningless while nothing could leave `screened`. Reassignment's rescreen needs no new payload: `screen_application` resolves the opening at run time, so a job queued after the move reads the new JD by construction |

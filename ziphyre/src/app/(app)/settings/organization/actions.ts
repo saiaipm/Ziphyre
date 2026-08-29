@@ -15,6 +15,7 @@ export async function saveOrganization(input: {
   primaryLocation: string;
   timezone: string;
   currency: string;
+  showSampleData: boolean;
 }): Promise<SaveResult> {
   const session = await getSessionContext();
   if (!session) return { ok: false, error: "Not signed in." };
@@ -38,12 +39,16 @@ export async function saveOrganization(input: {
       primary_location: input.primaryLocation.trim() || null,
       timezone: input.timezone,
       currency: input.currency,
+      show_sample_data: input.showSampleData,
     })
     .eq("id", session.organization.id);
 
   if (error) return { ok: false, error: error.message };
 
+  // FR-139/§10B: Home reads this same value, so it has to revalidate
+  // too — not just this settings page.
   revalidatePath("/settings/organization");
   revalidatePath("/");
+  revalidatePath("/postings");
   return { ok: true };
 }

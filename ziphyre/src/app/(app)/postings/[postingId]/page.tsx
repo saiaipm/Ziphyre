@@ -48,6 +48,7 @@ export default async function PostingDetailPage({
           name={posting.name}
           openingCount={posting.openings.length}
           isClosed={isClosed}
+          isSample={posting.isSample}
           createdAt={posting.createdAt}
           closedAt={posting.closedAt}
         />

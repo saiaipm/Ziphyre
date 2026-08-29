@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,8 @@ export type OrgForm = {
   primaryLocation: string;
   timezone: string;
   currency: string;
+  /** FR-136/§10B */
+  showSampleData: boolean;
 };
 
 export function OrganizationForm({ initial }: { initial: OrgForm }) {
@@ -176,6 +179,28 @@ export function OrganizationForm({ initial }: { initial: OrgForm }) {
             </SelectContent>
           </Select>
         </Field>
+      </Section>
+
+      <Section
+        title="Sample data"
+        description="A seeded, fabricated demo pipeline — never a real applicant, always marked wherever it shows."
+      >
+        <label className="flex cursor-pointer items-start gap-3">
+          <Checkbox
+            checked={form.showSampleData}
+            onCheckedChange={(v) => set("showSampleData", v === true)}
+            className="mt-0.5"
+          />
+          <span className="text-sm">
+            Show sample data
+            <span className="block text-xs font-normal text-muted-foreground">
+              On by default so an empty workspace has something to explore.
+              Turning this off hides it from Home and Postings — nothing is
+              deleted, and turning it back on restores exactly what was
+              there.
+            </span>
+          </span>
+        </label>
       </Section>
 
       <div className="flex items-center gap-3">

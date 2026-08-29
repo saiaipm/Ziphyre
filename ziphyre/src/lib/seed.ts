@@ -1,89 +1,13 @@
 /**
- * Sample data for previewing the interface before Supabase is connected.
+ * Fixed option lists for the organisation-settings dropdowns.
  *
- * Derived from Testing/baseline-ranking-CA-role.md — the human ranking of the
- * seven real Chartered Accountant applicants, written before screening existed.
- * These are NOT screening outputs. They are the recorded human baseline, shown
- * so the interface can be judged with realistic content in it.
- *
- * Delete this file once real data flows.
+ * Used to also hold `seedPostings` — hardcoded, unpersisted preview
+ * data for the pipeline screen shown before Supabase was connected.
+ * Retired in M8 (§10B): a seeded `is_sample = true` posting, scored by
+ * the real pipeline and controlled by `organization.show_sample_data`,
+ * replaces it — a real row in the same list rather than a separate
+ * client-only fake mode with ids nothing could click into.
  */
-
-export type SeedOpening = {
-  id: string;
-  title: string;
-  location: string;
-  counts: {
-    applied: number;
-    screened: number;
-    shortlisted: number;
-    new: number;
-    needsReview: number;
-  };
-};
-
-export type SeedPosting = {
-  id: string;
-  name: string;
-  status: "open" | "closed";
-  createdAt: string;
-  openings: SeedOpening[];
-};
-
-export const seedPostings: SeedPosting[] = [
-  {
-    id: "p-finance-aug",
-    name: "Finance hiring, August",
-    status: "open",
-    createdAt: "2026-08-04",
-    openings: [
-      {
-        id: "o-ca",
-        title: "Chartered Accountant",
-        location: "Hyderabad",
-        counts: {
-          applied: 7,
-          screened: 7,
-          shortlisted: 2,
-          new: 0,
-          needsReview: 0,
-        },
-      },
-      {
-        id: "o-smm",
-        title: "Social Media Manager",
-        location: "Hyderabad",
-        counts: {
-          applied: 0,
-          screened: 0,
-          shortlisted: 0,
-          new: 0,
-          needsReview: 0,
-        },
-      },
-    ],
-  },
-  {
-    id: "p-ops-jun",
-    name: "Operations, June",
-    status: "closed",
-    createdAt: "2026-06-11",
-    openings: [
-      {
-        id: "o-ops",
-        title: "Operations Executive",
-        location: "Hyderabad",
-        counts: {
-          applied: 23,
-          screened: 23,
-          shortlisted: 4,
-          new: 0,
-          needsReview: 1,
-        },
-      },
-    ],
-  },
-];
 
 export const SIZE_BANDS = [
   "1–10",

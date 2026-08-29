@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionContext } from "@/lib/session";
 import type { StageKey } from "@/lib/stages";
 
 /**
@@ -45,12 +46,17 @@ export async function getOverviewMetrics(
   includeClosed = false,
 ): Promise<OverviewMetrics> {
   const supabase = await createClient();
+  const session = await getSessionContext();
 
   const { data: postings } = await supabase
     .from("posting")
-    .select("id, status, opening (id)");
+    .select("id, status, is_sample, opening (id)");
 
-  const all = postings ?? [];
+  // FR-139/§10B: filtered here, before openingIds is derived below,
+  // because every number this function returns depends on that array.
+  const all = (postings ?? []).filter(
+    (p) => session?.organization.show_sample_data || !p.is_sample,
+  );
   const counted = includeClosed ? all : all.filter((p) => p.status === "open");
 
   const openingIds = counted.flatMap((p) => p.opening.map((o) => o.id));

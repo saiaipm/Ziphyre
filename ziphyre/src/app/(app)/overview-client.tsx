@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import {
   Plus,
@@ -11,11 +10,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { SampleBadge } from "@/components/sample-badge";
 import { cn } from "@/lib/utils";
 import { STAGE_TEXT } from "@/lib/stages";
-import { seedPostings, type SeedPosting, type SeedOpening } from "@/lib/seed";
 import type { PostingSummary } from "@/lib/postings";
 
 type Props = {
@@ -24,12 +21,18 @@ type Props = {
   summary: React.ReactNode;
 };
 
+/**
+ * Used to branch here between real postings and `lib/seed.ts`'s
+ * hardcoded preview data — client-local, unpersisted, and disconnected
+ * from the real pipeline (no actual candidates, no real screening,
+ * fake ids nothing could click into). §10B replaces it: a sample
+ * posting is now a real, seeded, `is_sample = true` row that scores
+ * candidates through the actual pipeline and shows up in this exact
+ * list, marked with `SampleBadge`, rather than a separate fake mode.
+ */
 export function OverviewClient({ postings, summary }: Props) {
-  const [preview, setPreview] = useState(false);
-
-  const data = preview ? seedPostings : postings;
-  const open = data.filter((p) => p.status === "open");
-  const closed = data.filter((p) => p.status === "closed");
+  const open = postings.filter((p) => p.status === "open");
+  const closed = postings.filter((p) => p.status === "closed");
 
   return (
     <div className="space-y-8">
@@ -40,68 +43,34 @@ export function OverviewClient({ postings, summary }: Props) {
           </h1>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
-            <Switch
-              id="preview"
-              checked={preview}
-              onCheckedChange={setPreview}
-            />
-            <Label
-              htmlFor="preview"
-              className="text-sm font-normal text-muted-foreground"
-            >
-              Preview with sample data
-            </Label>
-          </div>
-          <Button asChild>
-            <Link href="/postings/new">
-              <Plus className="size-4" aria-hidden />
-              New posting
-            </Link>
-          </Button>
-        </div>
+        <Button asChild>
+          <Link href="/postings/new">
+            <Plus className="size-4" aria-hidden />
+            New posting
+          </Link>
+        </Button>
       </div>
 
-      {preview && (
-        <p className="rounded border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Sample data.</span> Drawn
-          from the recorded human baseline for the Chartered Accountant role —
-          not screening output. Nothing here is stored.
-        </p>
-      )}
+      {summary}
 
-      {/* The summary counts real applications. Showing it above sample
-          postings would put true numbers next to invented ones and
-          invite the reader to reconcile two things that never matched. */}
-      {!preview && summary}
-
-      {data.length === 0 ? (
+      {postings.length === 0 ? (
         <EmptyState />
       ) : (
         <div className="space-y-8">
           {open.length > 0 && (
             <section className="space-y-3">
-              {open.map((p) =>
-                preview ? (
-                  <SamplePostingCard key={p.id} posting={p as SeedPosting} />
-                ) : (
-                  <RealPostingCard key={p.id} posting={p as PostingSummary} />
-                ),
-              )}
+              {open.map((p) => (
+                <RealPostingCard key={p.id} posting={p} />
+              ))}
             </section>
           )}
 
           {closed.length > 0 && (
             <section className="space-y-3">
               <h2 className="label-meta">Closed</h2>
-              {closed.map((p) =>
-                preview ? (
-                  <SamplePostingCard key={p.id} posting={p as SeedPosting} />
-                ) : (
-                  <RealPostingCard key={p.id} posting={p as PostingSummary} />
-                ),
-              )}
+              {closed.map((p) => (
+                <RealPostingCard key={p.id} posting={p} />
+              ))}
             </section>
           )}
         </div>
@@ -155,6 +124,7 @@ function RealPostingCard({ posting }: { posting: PostingSummary }) {
           className="flex items-center gap-2.5 hover:underline"
         >
           <h3 className="text-sm font-semibold">{posting.name}</h3>
+          {posting.isSample && <SampleBadge />}
           {isClosed && (
             <Badge
               variant="secondary"
@@ -234,93 +204,6 @@ function RealPostingCard({ posting }: { posting: PostingSummary }) {
         ))}
       </ul>
     </article>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sample data — application-stage counts, exactly what this card will show
-// for real postings once M2 (screening) and M4 (pipeline) exist.
-// ---------------------------------------------------------------------------
-
-function SamplePostingCard({ posting }: { posting: SeedPosting }) {
-  const isClosed = posting.status === "closed";
-
-  return (
-    <article
-      className={cn(
-        "overflow-hidden rounded-lg border border-border bg-card",
-        isClosed && "opacity-70",
-      )}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-divider px-5 py-3.5">
-        <div className="flex items-center gap-2.5">
-          <h3 className="text-sm font-semibold">{posting.name}</h3>
-          {isClosed && (
-            <Badge
-              variant="secondary"
-              className="rounded-full bg-fit-rejected-bg px-2 py-0 text-[11px] font-medium text-fit-rejected"
-            >
-              Closed
-            </Badge>
-          )}
-        </div>
-        <span className="text-xs text-muted-foreground">
-          {posting.openings.length}{" "}
-          {posting.openings.length === 1 ? "opening" : "openings"}
-        </span>
-      </div>
-
-      <ul className="divide-y divide-divider">
-        {posting.openings.map((o) => (
-          <SampleOpeningRow key={o.id} opening={o} />
-        ))}
-      </ul>
-    </article>
-  );
-}
-
-function SampleOpeningRow({ opening }: { opening: SeedOpening }) {
-  const { counts } = opening;
-  const untouched = counts.applied === 0;
-
-  return (
-    <li>
-      <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-        <div className="min-w-[180px]">
-          <p className="text-sm font-medium">{opening.title}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {opening.location}
-          </p>
-        </div>
-
-        {untouched ? (
-          <p className="text-sm text-muted-foreground">No applications yet</p>
-        ) : (
-          <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
-            <Stat label="Applied" value={counts.applied} />
-            <Stat label="Screened" value={counts.screened} />
-            <Stat
-              label="Shortlisted"
-              value={counts.shortlisted}
-              tone="shortlisted"
-            />
-            <Stat label="New" value={counts.new} />
-            {counts.needsReview > 0 && (
-              <div className="flex items-center gap-1.5">
-                <AlertTriangle
-                  className="size-3.5 text-fit-review"
-                  aria-hidden
-                />
-                <span className="text-sm font-medium text-fit-review">
-                  {counts.needsReview}{" "}
-                  {counts.needsReview === 1 ? "needs" : "need"} review
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </li>
   );
 }
 
