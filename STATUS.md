@@ -1,6 +1,6 @@
 # Ziphyre — Current State
 
-**Updated:** 28 August 2026
+**Updated:** 29 August 2026
 **Purpose:** Session handoff. Where the build actually is, what's next, and
 what's outstanding. Everything durable lives in the documents below — this
 file is deliberately just the moving parts.
@@ -21,6 +21,7 @@ file is deliberately just the moving parts.
 | `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-141 (Draft 10; FR-1–4, 19–29, 36, 62–65 retired) |
 | `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 10) |
 | `Testing/README.md` | Why the baseline file is gitignored, and what it's for |
+| `Testing/baseline-ranking-mock-CA-role.md` | The six sample candidates: intended ranking vs. what screening actually produced. Committed — no real person in it |
 
 **Read `ziphyre/AGENTS.md` before writing code.** This Next.js version has
 breaking changes from training data; check `node_modules/next/dist/docs/`
@@ -365,30 +366,20 @@ sending to a real inbox rather than trusting a green build:
 4. The send checkbox was **invisible** against a flat panel — a 16px box
    with a 1px border, on the one control that mails a stranger.
 
-**Start the next session here.** M7 is done. Two things worth doing
-before anything new:
+**M7 is done, and every message kind has now been sent for real** —
+`application_received` fired at 05:53 on 29 Aug (the last unproven
+path; it had never run because the only form application predated the
+mail setup). All five rows in `message` are `sent` with no errors:
+rejection, reversal, interview invite, apply confirmation, and a second
+rejection.
 
-1. **The apply confirmation (FR-117) has still never fired for real.**
-   The path is complete and pumps its own job, but the only form
-   application predates the mail setup, so no `application_received` has
-   ever been sent. It is the first message every real candidate gets.
-   Test by applying with a `+tag` alias on a personal address.
-2. **Production's send-check spins where local works**, which points at
-   `SUPABASE_SERVICE_ROLE_KEY` on Vercel — the offer calls
-   `getMailSettings` through the admin client. Unverified, and it would
-   break every send offer in production.
-
-Then: M8, or the Outstanding items below — item 4 (the fallback note
-lying after a provider reorder) and item 6 (CV bundles built in-request)
-are the two most likely to embarrass a demo.
-
-**M8 (sample data) — done, on `m8-mock-demo-data`.** PN-005, functional
-spec Draft 10 (FR-136 – FR-141), tech spec Draft 10 (§10B). Migration
-`20260829090000_m8_sample_data.sql`, applied.
+**M8 (sample data) — done and merged to `main`, 29 Aug 2026.** PN-005,
+functional spec Draft 10 (FR-136 – FR-141), tech spec Draft 10 (§10B).
+Migration `20260829090000_m8_sample_data.sql`, applied.
 
 Every candidate in the product was a real person — right for M2, wrong
 for the moment anyone outside this project sees a demo. Two things
-ship: a settings switch, and six fabricated candidates it governs.
+ship: a toggle, and six fabricated candidates it governs.
 
 *The toggle.* `posting.is_sample` (default false) and `organization.
 show_sample_data` (default true), filtered in `getPostingsForOrg()` and
@@ -398,6 +389,16 @@ sample posting everywhere it appears. Verified against real data by
 running the exact filter expression both ways: with the toggle on,
 both the real posting and the sample one list; off, only the real one
 does.
+
+**The toggle is in the header of Home and Postings**, beside "New
+posting", saving on the spot via `setShowSampleData`. It is *also* a
+checkbox in Settings → Organization, saved with that form. It shipped
+only in Settings first, which was wrong: you want this control while
+you are looking at the sample pipeline and want it gone, not buried
+under Identity/Profile/Regional. It now occupies the same header slot
+the retired fake "Preview with sample data" switch used to — that
+affordance was in the right place all along; what was wrong with it was
+that it showed invented counts rather than a real seeded pipeline.
 
 **Retired `lib/seed.ts`'s `seedPostings` and Home's "Preview with
 sample data" switch along with it.** Found while building this —
@@ -442,8 +443,52 @@ independent instance of the model inferring something a CV doesn't
 actually leave ambiguous, worth revisiting if it recurs against a real
 candidate.
 
-**Three real bugs found and fixed while building this, none related to
-sample data itself:**
+**Five real bugs found and fixed while building this, none related to
+sample data itself. The first is the most important — read it before
+touching the job queue:**
+
+0. **A send-only pump was stepping over queued screenings — my own
+   regression from 28 Aug.** An application submitted through the apply
+   page never screened; its `screen_application` job sat `queued` for
+   2h12m with `attempts = 0`, `run_after` already elapsed, and no
+   error. A `send_message` job created **one second later** was claimed
+   four minutes in. A pump had run and walked straight past the
+   screening.
+
+   Cause: building FR-110 the day before, I gave
+   `pumpJobsAfterResponse` a `kinds` parameter and passed
+   `["send_message"]` at three call sites, so an outcome email would
+   not queue behind a slow screening. Reasonable intent, wrong
+   mechanism — as a *filter* it made three of six call sites blind to
+   screening work. Before that change every pump swept screenings by
+   default, so any later action in the app would have rescued the job
+   within seconds.
+
+   Fixed: `priority` now decides only what runs **first**, never what
+   is eligible. Named kinds go first, then a second pass sweeps
+   everything; the 45s claim deadline stops the second pass overrunning
+   the first. Verified by reproducing both halves against the real
+   runner — a send-only pump leaves a queued screening at `attempts=0`;
+   the sweep takes it to `attempts=1`.
+
+   **The lesson for the queue generally:** never narrow what a pump is
+   allowed to claim. Ordering is a legitimate optimisation; exclusion
+   silently orphans work, and the cron backstop is *daily* on Hobby, so
+   "it'll get picked up" is off by up to 24 hours.
+
+0b. **A screening stuck at `pending`/`in_progress` had no Retry.** The
+   button rendered only for `needs_manual_review`, so the one state
+   most needing an escape hatch was the only one without one — an
+   empty actions cell beside a permanent "Screening…". Now offered on
+   both; `retryScreening` already re-queued and pumped, so no new
+   plumbing was needed.
+
+0c. **The pipeline table had no date column.** §8's column list has
+   ended with "Received" since Draft 1. M5 built the date *filter* and
+   the date *sort* over `application.submitted_at` — never the column,
+   so you could filter and sort by a date the table never showed you.
+   Added to all three row states, reading `submittedAt ?? createdAt`,
+   the same expression the filter and sort use.
 
 1. **Creating a new posting has been broken since M3.5, six days ago.**
    `posting.apply_token` went `NOT NULL` with no database default;
@@ -466,7 +511,30 @@ sample data itself:**
 
 **What's still the user's own step, deliberately not done here:**
 retiring the seven real CVs. Irreversible, real people's data, on their
-own timeline.
+own timeline. The sample pipeline now exists to replace them, so this
+is unblocked whenever they want it. The FK chain is `stage_event` →
+`screening` → `application` → `candidate`, all cascading from
+`posting` (tech spec Draft 3) — plus the Storage objects under
+`cvs/<org>/<application>/`, which cascade deletes do **not** remove.
+
+**Start the next session here.**
+
+1. **Verify M8 on production.** It merged to `main` at the end of the
+   29 Aug session but was only ever exercised locally — the toggle, the
+   `Received` column, the retry on a stuck screening, and the pump fix
+   have not been clicked once against `ziphyre.vercel.app`. Today's
+   pattern held all session: everything that broke in production was
+   invisible locally.
+2. **Watch the first screening that arrives with nobody looking.** The
+   pump regression is fixed and reproduced, but the underlying design
+   is unchanged: screening still runs inside a request via `after()`,
+   best-effort, with a **daily** cron as the only backstop on Hobby. A
+   frequent cron needs a paid plan; moving screening to a queue that
+   survives a request is what tech spec §10 already argues for about
+   exports.
+3. Then the Outstanding items below — item 4 (the fallback note lying
+   after a provider reorder) and item 6 (CV bundles built in-request)
+   are the two most likely to embarrass a demo.
 
 ---
 
@@ -497,22 +565,35 @@ baseline's "treat CA as a hard gate" scenario). Compared to
 
 ---
 
-## Verified state, 27 Aug 2026
+## Verified state, 29 Aug 2026
 
-**Git:** on `main`, in sync with `origin/main` at `bd190aa`. Everything
-described above is merged. No unmerged branches carry live work.
+**Git:** on `main`, M8 merged. Everything described above is merged; no
+unmerged branch carries live work.
 
 **Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): **17 tables**, RLS on
 all. The M2/M4 set plus M7's `mail_settings`, `message_template` and
-`message`. `application` gained `status_token` (unique, one per
-application) and `outcome_sent_at`; `opening` gained `booking_url`.
+`message`. `application` gained `status_token` (now **nullable** — the
+purge nulls it, §10A.5) and `outcome_sent_at`; `opening` gained
+`booking_url`; M8 added `posting.is_sample` and
+`organization.show_sample_data`.
 
-**Local data** (the demo org): 1 open posting "Finance hiring, August,
-Demo" with two openings — Chartered Accountant (7 applications: 2
-Shortlisted, 4 Screened, 1 Rejected) and Accounts Executive (1). All 8
-carry a `status_token`, so every one has a working status page.
-`message` and `message_template` are empty, which is correct: no mail has
-been sent, and template defaults live in code until a customer edits one.
+**Live data** (the demo org), two postings:
+
+| Posting | Opening | Applications |
+|---|---|---|
+| Finance Hiring, Demo | Chartered Accountant | 9 — 2 Shortlisted, 5 Screened, 2 Rejected |
+| Finance Hiring, Demo | Accounts Executive | 1 Screened |
+| **Sample pipeline — Chartered Accountant** (`is_sample`) | Chartered Accountant | 6 Screened — the fabricated set |
+
+**Seven of those sixteen are real people's CVs** — the original CA
+applicants on the non-sample posting. Retiring them is the outstanding
+manual step above.
+
+Every application carries a `status_token`. `message` holds **5 sent
+rows, no failures** (rejection, reversal, interview invite, apply
+confirmation, rejection). `message_template` is still empty, which is
+correct: defaults live in code until a customer edits one, and none
+has been.
 
 **Two admins**, both active in the same organisation:
 `saiphanimba09@gmail.com` (original) and **`ziphyre.ai@gmail.com` (the
