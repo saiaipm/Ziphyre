@@ -14,7 +14,7 @@ import Image from "next/image";
  * would depend on a URL that rotates and would leak a request to Google
  * from an unauthenticated page. Null keeps the monogram.
  */
-const PHOTO: string | null = null;
+const PHOTO: string | null = "/sai.jpg";
 
 const NAME = "Sai Phaneendra";
 
