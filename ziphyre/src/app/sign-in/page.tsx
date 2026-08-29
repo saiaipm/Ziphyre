@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SignInButton } from "./sign-in-button";
+import { Inscription } from "./inscription";
 import { isConfigured } from "@/lib/config";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -9,18 +10,28 @@ export default function SignInPage() {
 
   return (
     <div className="flex min-h-screen">
-      {/* Left: the sign-in itself */}
-      <div className="flex flex-1 items-center justify-center px-8 py-16">
+      {/* Left: the sign-in itself. `relative` so the inscription can sit
+          in the corner of the pane rather than under the form. */}
+      <div className="relative flex flex-1 items-center justify-center px-8 py-16">
         <div className="w-full max-w-sm">
-          <div className="mb-9">
-            <span className="text-lg font-semibold tracking-tight">Ziphyre</span>
-            <span className="mt-0.5 block text-xs tracking-wide text-muted-foreground">
+          {/* The product name leads. "Sign in" is the instruction, not
+              the headline — it was the larger of the two, which put the
+              emphasis on the chore rather than on whose product this is. */}
+          <div className="mb-10">
+            <span className="block text-[34px] leading-none font-semibold tracking-tight">
+              Ziphyre
+            </span>
+            <span className="mt-2 block text-xs tracking-wide text-muted-foreground">
               AI Powered Screening Desk
             </span>
+            <p className="mt-5 text-[15px] leading-snug font-medium text-foreground/80">
+              Built for small, <span className="tracking-wide">AGILE</span>{" "}
+              teams.
+            </p>
           </div>
 
-          <h1 className="text-2xl font-semibold">Sign in</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
+          <h1 className="text-lg font-semibold">Sign in</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Sign in with your Google account.
           </p>
 
@@ -43,6 +54,8 @@ export default function SignInPage() {
               product cannot keep is worse on a sign-in screen than no
               promise at all, so there is nothing here now. */}
         </div>
+
+        <Inscription />
       </div>
 
       {/* Right: what this product is for.
