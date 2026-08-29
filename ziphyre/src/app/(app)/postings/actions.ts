@@ -555,6 +555,12 @@ export async function addCandidatesToOpening(
         source: "manual",
         source_status: "manual",
         submitted_at: new Date().toISOString(),
+        // §10A.4/FR-119: every application needs a status page. The
+        // apply-page path gets one from the M7 migration's backfill,
+        // which only ever ran once — a manual upload since has been
+        // getting no token at all, silently. Found while seeding M8's
+        // sample candidates, themselves manual uploads.
+        status_token: randomBytes(32).toString("base64url"),
       })
       .select("id")
       .single();
