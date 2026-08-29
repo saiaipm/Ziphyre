@@ -866,46 +866,68 @@ revisit only if the pattern repeats. See `TechDecisions.md` §7.
 `.doc` path, but no image-only PDF has been tried. Low priority now the path
 itself works.
 
-**13. The apply route's `after()` pump did no work — observed, 29 Aug.**
-The first real end-to-end apply test. The submit request logged **no
-`[pdf]` or `[ai]` lines at all**: its pump ran and screened nothing. The
-`screen_application` job sat `queued` at `attempts = 0` from 11:41:06
-until **11:42:36**, when a pump triggered by the admin clicking Retry
-finally claimed it — 90 seconds, and only because a person was watching.
-With nobody there it would have waited for the **daily** cron.
+**13. Fixed — `after()` was handed a callback that returned nothing.**
+The first real end-to-end apply test, 29 Aug: the submit request logged
+**no `[pdf]` or `[ai]` line at all**, and its `screen_application` job
+sat `queued` at `attempts = 0` from 11:41:06 until **11:42:36**, when a
+pump triggered by an admin clicking Retry swept it. 90 seconds, and only
+because a person was watching.
 
-This is not the M8 pump regression returning: that was a `kinds` filter
-excluding screenings, and this route passes both kinds. The cause is
-undiagnosed, and deliberately hard to see — `runQueuedJobs(...).catch(()
-=> {})` in the apply route swallows every error the pump can raise, so a
-failure there produces silence rather than a log line. **Start by
-removing that swallow**, or by logging in the `catch`; there is no point
-theorising while the one thing that would say what happened is being
-discarded.
+Cause, read out of the framework rather than guessed. `after` keeps a
+serverless invocation alive only for what the callback **returns**: it
+does `await callback()` and hands that to `waitUntil`
+(`next/dist/server/after/after-context.js`). The route had
 
-The real fix is the one tech spec §10 already argues: screening should
-not run inside a request. This is the strongest evidence yet for it, and
-the second-strongest argument for a paid plan after the daily cron cap.
+```js
+after(() => { runQueuedJobs({...}).catch(() => {}); });   // returns undefined
+```
 
-**14. Retry enqueues a second screening with no guard, and the two runs
-disagree.** `retryScreening` calls `enqueueJob` unconditionally — it
-never checks whether a `screen_application` job is already `queued` for
-that application. So Retry on a screening that is merely *slow* rather
-than dead creates a duplicate, and the pump then runs both, in the same
-invocation.
+so `after` awaited `undefined`, `waitUntil` settled at once, and Vercel
+froze the function with the pump still in flight — before it had claimed
+anything. `pumpJobsAfterResponse` never had this bug because its
+callback is `async` and awaits.
 
-Observed 29 Aug: two parses of the same 5172 characters, two model
-calls (4646ms, 3403ms), and **two `screening` rows — 9.0 and 8.6** for
-one CV against one JD on one model. The components differed too (skills
-9 vs 7). The later row wins `current_screening_id`, so the score on
-screen came from the duplicate.
+**This cannot reproduce locally, ever.** Node does not freeze the
+process after a response, so the fire-and-forget promise simply runs to
+completion in dev. Only a serverless host can show it.
 
-Two separate things to fix, and worth not conflating: Retry should not
-queue a second job when one is already pending (re-pump instead), and
-**a candidate can score differently on two runs of the same model** —
-which matters for FR-49's promise that two scores can be compared
-honestly. The second is a property of the model, not a bug, but nothing
-in the product currently says so.
+**The same shape existed in a second place** — `communications/actions.
+ts`, FR-111's Retry, which queued the message and let the function
+freeze before sending it: a Retry that visibly did nothing. Both are
+`async` + `await` now, and both log their errors instead of discarding
+them. **If you write `after(...)` anywhere, the callback must be `async`
+and must `await` the work.**
+
+Tech spec §10's argument still stands and is untouched by this: screening
+should not run inside a request at all. This made the in-request design
+fail earlier and more quietly than expected, but it did not create it.
+
+**14. Fixed — Retry no longer double-screens.** `retryScreening` called
+`enqueueJob` unconditionally, never checking whether a
+`screen_application` job was already `queued` for that application. The
+admin cannot tell "stuck" from "slow" — the row reads "Screening…"
+either way — so the common case is pressing Retry on work that was
+always going to run.
+
+Observed 29 Aug: two parses of the same 5172 characters, two model calls
+(4646ms, 3403ms), and **two `screening` rows — 9.0 and 8.6** for one CV
+against one JD on one model, skills scored 9 then 7. The later row wins
+`current_screening_id`, so the score the admin reads came from the
+duplicate, and because scores are immutable (§7) the first is kept
+forever with nothing pointing at it.
+
+Retry now re-pumps without enqueuing when a job is already pending,
+which rescues a genuinely orphaned job just as well. The guard is a
+JSONB containment match on `payload`, verified against the real rows to
+match both jobs of an application regardless of `reason` and not to
+match another application's.
+
+**What is *not* fixed, and is not a bug:** the same CV scored 9.0 and
+8.6 on two runs of the same model minutes apart. That is model
+non-determinism. It matters because FR-49 promises two scores can be
+compared honestly, and nothing in the product tells an admin that a
+rescreen may move a number without anything about the candidate having
+changed. Worth a line of UI copy at some point; recorded here meanwhile.
 
 ### Deliberate deviations, recorded so they are not mistaken for oversights
 
