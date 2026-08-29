@@ -369,9 +369,12 @@ sending to a real inbox rather than trusting a green build:
 **M7 is done, and every message kind has now been sent for real** —
 `application_received` fired at 05:53 on 29 Aug (the last unproven
 path; it had never run because the only form application predated the
-mail setup). All five rows in `message` are `sent` with no errors:
+mail setup). All five rows in `message` were `sent` with no errors:
 rejection, reversal, interview invite, apply confirmation, and a second
-rejection.
+rejection. **Those rows no longer exist** — they cascaded when the real
+pipeline was retired later that day, so this paragraph is now the only
+record that every kind has fired. The code paths are unchanged and
+still proven; what is gone is the evidence, not the capability.
 
 **M8 (sample data) — done and merged to `main`, 29 Aug 2026.** PN-005,
 functional spec Draft 10 (FR-136 – FR-141), tech spec Draft 10 (§10B).
@@ -538,13 +541,44 @@ touching the job queue:**
    reload**: 16 → 10 → 16, funnel reconciling each time, database
    agreeing with the screen, no server errors.
 
-**What's still the user's own step, deliberately not done here:**
-retiring the seven real CVs. Irreversible, real people's data, on their
-own timeline. The sample pipeline now exists to replace them, so this
-is unblocked whenever they want it. The FK chain is `stage_event` →
-`screening` → `application` → `candidate`, all cascading from
-`posting` (tech spec Draft 3) — plus the Storage objects under
-`cvs/<org>/<application>/`, which cascade deletes do **not** remove.
+**The real CVs are retired — done 29 Aug 2026, on the user's
+instruction.** This had been carried as their own step since M8:
+irreversible, real people's data, on their own timeline. They called
+it, to clear the pipeline for an end-to-end apply test.
+
+`ziphyre/scripts/retire-real-cvs.ts`, **dry run unless `--commit`** —
+the same asymmetry `purge.ts` uses, for the same reason. It deletes
+through `admin.storage.from("cvs").remove()` and the Supabase client
+rather than raw SQL, because `DELETE FROM storage.objects` drops the
+metadata row and can leave the file itself behind, which for a real
+candidate's CV is not deletion at all. Order is load-bearing: collect
+paths → remove objects → delete rows, since the reverse loses the
+paths.
+
+**Ten applications went, not seven.** The seven real CAs plus three
+test applications — and two of those tests carried *real people's
+CVs* under a test name, so they were never merely synthetic. With
+them: 25 screenings, 18 stage events, 10 candidates, and **all five
+`message` rows**, because `message.application_id` is `NOT NULL` with
+`ON DELETE CASCADE`. The outbox could not be kept while zeroing the
+pipeline; the user was told and chose the clean slate. M7's proof that
+every message kind sent for real now lives only in this document.
+
+**Two already-orphaned Storage objects were found and swept** —
+`fake-legacy-cv.doc` and an `Anita_Desai_CV.pdf` whose applications had
+been deleted earlier. Exactly the failure the old note here predicted:
+cascade deletes never touch Storage, so real CV data accumulates with
+nothing pointing at it and nothing reporting it. **Any future hard
+delete of an application must remove its object first** — and the
+script's orphan sweep is worth re-running after any such deletion.
+
+Verified by re-reading the database, not by trusting the writes: 0
+applications on the real openings, 0 messages, 6 storage objects (the
+sample CVs), 6 candidates. The posting, both openings, 3 JD versions,
+29 requirements and the apply token all survive, and the apply page
+renders both roles — so the pipeline is at zero without being
+dismantled. The 42 `job` rows are kept as history; they have no FK to
+`application`, so their payloads now name ids that are gone.
 
 **Start the next session here.**
 
@@ -620,19 +654,21 @@ purge nulls it, §10A.5) and `outcome_sent_at`; `opening` gained
 
 | Posting | Opening | Applications |
 |---|---|---|
-| Finance Hiring, Demo | Chartered Accountant | 9 — 2 Shortlisted, 5 Screened, 2 Rejected |
-| Finance Hiring, Demo | Accounts Executive | 1 Screened |
+| Finance Hiring, Demo | Chartered Accountant | **0** — cleared 29 Aug |
+| Finance Hiring, Demo | Accounts Executive | **0** — cleared 29 Aug |
 | **Sample pipeline — Chartered Accountant** (`is_sample`) | Chartered Accountant | 6 Screened — the fabricated set |
 
-**Seven of those sixteen are real people's CVs** — the original CA
-applicants on the non-sample posting. Retiring them is the outstanding
-manual step above.
+**No real person's data is left in the product.** The ten applications
+on the non-sample posting were retired 29 Aug (see above); the six that
+remain are fabricated. That posting keeps its openings, 3 JD versions,
+29 requirements and its apply token, so it is empty rather than
+dismantled — ready for an end-to-end apply test from zero.
 
-Every application carries a `status_token`. `message` holds **5 sent
-rows, no failures** (rejection, reversal, interview invite, apply
-confirmation, rejection). `message_template` is still empty, which is
-correct: defaults live in code until a customer edits one, and none
-has been.
+Every application carries a `status_token`. **`message` is empty**: all
+five sent rows cascaded with the applications they belonged to, so the
+outbox reads zero until the next send. `message_template` is still
+empty too, which is correct: defaults live in code until a customer
+edits one, and none has been.
 
 **Two admins**, both active in the same organisation:
 `saiphanimba09@gmail.com` (original) and **`ziphyre.ai@gmail.com` (the
