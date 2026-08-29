@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { getSessionContext } from "@/lib/session";
 import {
   EMPTY_STAGE_COUNTS,
   type StageCounts,
@@ -11,6 +12,8 @@ export type PostingSummary = {
   name: string;
   status: "open" | "closed";
   createdAt: string;
+  /** FR-138/§10B — always marked wherever it's shown, never hidden itself. */
+  isSample: boolean;
   openings: {
     id: string;
     title: string;
@@ -70,16 +73,24 @@ function tallyOpenings(
  */
 export async function getPostingsForOrg(): Promise<PostingSummary[]> {
   const supabase = await createClient();
+  const session = await getSessionContext();
 
-  const { data: postings, error } = await supabase
+  const { data: fetched, error } = await supabase
     .from("posting")
     .select(
-      "id, name, status, created_at, opening (id, title, work_location, created_at, current_jd_version_id)",
+      "id, name, status, created_at, is_sample, opening (id, title, work_location, created_at, current_jd_version_id)",
     )
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  if (!postings) return [];
+  if (!fetched) return [];
+
+  // FR-139/§10B. Filtered here so the Postings index and Home — both
+  // callers of this function — agree on what "hidden" means without
+  // either having to know about the toggle itself.
+  const postings = session?.organization.show_sample_data
+    ? fetched
+    : fetched.filter((p) => !p.is_sample);
 
   const openingIds = postings.flatMap((p) => p.opening.map((o) => o.id));
 
@@ -112,6 +123,7 @@ export async function getPostingsForOrg(): Promise<PostingSummary[]> {
     name: p.name,
     status: p.status as "open" | "closed",
     createdAt: p.created_at,
+    isSample: p.is_sample,
     openings: p.opening.map((o) => ({
       id: o.id,
       title: o.title,
@@ -158,7 +170,7 @@ export async function getPostingDetail(
   const { data: posting, error } = await supabase
     .from("posting")
     .select(
-      "id, name, status, closed_at, purge_after, created_at, apply_token, opening (id, title, work_location, created_at, current_jd_version_id)",
+      "id, name, status, closed_at, purge_after, created_at, apply_token, is_sample, opening (id, title, work_location, created_at, current_jd_version_id)",
     )
     .eq("id", postingId)
     .maybeSingle();
@@ -226,6 +238,7 @@ export async function getPostingDetail(
     name: posting.name,
     status: posting.status as "open" | "closed",
     createdAt: posting.created_at,
+    isSample: posting.is_sample,
     closedAt: posting.closed_at,
     purgeAfter: posting.purge_after,
     daysUntilPurge: posting.purge_after

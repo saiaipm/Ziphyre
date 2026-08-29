@@ -1,9 +1,9 @@
 # Functional Spec — Screening Desk
 
-**Source:** `ProductNotes/PN-001-admin-dashboard-and-screening.md`, revised by `ProductNotes/PN-002-native-application-form.md` and `ProductNotes/PN-004-candidate-communications.md`
+**Source:** `ProductNotes/PN-001-admin-dashboard-and-screening.md`, revised by `ProductNotes/PN-002-native-application-form.md`, `ProductNotes/PN-004-candidate-communications.md` and `ProductNotes/PN-005-sample-demo-data.md`
 **Product truth:** `ProductContext.md` v1.1
-**Baseline for validation:** `Testing/baseline-ranking-CA-role.md`
-**Status:** Draft 9 · 28 August 2026
+**Baseline for validation:** `Testing/baseline-ranking-CA-role.md`, `Testing/baseline-ranking-mock-CA-role.md`
+**Status:** Draft 10 · 29 August 2026
 
 ---
 
@@ -318,6 +318,15 @@ Validated against the seven real Chartered Accountant applicants and the human r
 **FR-133** A **Communications** page lists every message sent, showing the candidate, the role, the kind of message, when it was sent, and whether it failed. It is where a send is confirmed, found, or retried.
 **FR-134** The templates, the sending identity and the booking link are configured on that page. Sending itself stays in the pipeline, because the decision to contact a candidate is made while looking at them.
 **FR-135** The page shows outbound messages only. It has no inbox, no threads and no replies (Non-Goal 10).
+
+## 6B. Sample data
+
+**FR-136** An organisation can show or hide a seeded, fabricated demo pipeline — one posting, one opening, six candidates — without deleting it either way. The control lives in Settings.
+**FR-137** Sample data defaults **on**. A new organisation with no real postings sees something to explore rather than an empty workspace.
+**FR-138** A sample posting, and everything under it, is marked wherever it appears — Home, the Postings list, its own pages — so it can never be mistaken for a real posting. Not a setting to turn the mark off: this always shows.
+**FR-139** Turning sample data off hides it from Home and the Postings list. It changes nothing in the database — turning it back on restores exactly what was there, same candidates, same scores.
+**FR-140** A sample candidate's screening is produced by the same pipeline every real candidate goes through — extraction, must-have marking, the model call, the fallback chain. Nothing about a score is authored by hand (TechDecisions §7).
+**FR-141** No sample candidate has a real email address, and nothing is ever sent to one. They carry the same placeholder a manual upload gives a real candidate with no verified address, never a real-looking one.
 
 ---
 
@@ -925,6 +934,7 @@ No dark launch and no admin-only preview: there is no existing product to hide t
 
 | Version | Date | Change |
 |---|---|---|
+| Draft 10 | 29 Aug 2026 | **§6B added — sample data (PN-005), FR-136 – FR-141.** Every candidate in the product until now was a real person; showing that to a prospective client, or to anyone outside this project, is the exact leak `CA Role Sample Resumes/` was gitignored to prevent. An organisation can now show or hide a seeded, fabricated pipeline without deleting it, defaulting on so a brand-new empty workspace has something to explore. **A sample candidate's score still comes from the real screening pipeline** — extraction, must-have marking, the model, the fallback chain — because TechDecisions §7's rule that a score is never authored by hand does not get an exception for being fake data; a demo showing a number no model produced would break the one promise screening has never broken. The flag lives on `posting`, not `opening` or `candidate`, because every listing and aggregate already fetches at the posting level (FR-101's home summary, the Postings index) — one column propagates everywhere the toggle needs to reach. Sample data is marked wherever it shows and that mark is not itself a setting |
 | Draft 9 | 28 Aug 2026 | **Candidate communications added (PN-004) — FR-106 – FR-135**, and with them Priya becomes a served persona for the first time. Ziphyre gains its first outbound surface and its second public one. Four decisions are load-bearing. **Mail goes over SMTP with an app password, not OAuth** — the Gmail API's `gmail.send` is a restricted scope, and PN-002 established that one sensitive scope re-gates the entire consent screen, admin sign-in included. **Ziphyre carries a booking link rather than integrating a calendar**, which is Non-Goal 5 restated as a build. **Nothing sends automatically except the application-received message** (FR-109), because Non-Goal 2 applies to communication as much as to outcomes. And **a rejection reaches the status page only after the outcome has been sent** (FR-123), so no candidate learns they were rejected from a page refresh before a person chose to tell them — with exactly one status link per application (FR-124), because a second link would leave the first one saying "under review" forever. Templates are editable where the screening prompt deliberately is not: a template decides how someone is spoken to, not how they are judged — but it carries no score variable, since a variable is a setting and Non-Goal 9 refuses the setting |
 | Draft 8 | 27 Aug 2026 | No requirements changed; records **FR-56 – FR-60 as built and verified against the real CA pipeline**, and two readings taken during implementation where the spec left room. **FR-57's "skippable" is a button, not an implication** — the disposition dialog carries an explicit Skip alongside the action, because a form that merely *looks* optional gets filled in anyway, and a pile of invented reasons is worse than none. **Disposition is scoped to On hold and Rejected in the data, not only the UI** — FR-58's list answers "why not", which is not a question Shortlisted asks, so recording one there would put unanswerable values in FR-71's export. Consequently Shortlist and "move back" complete on the click with no dialog: a confirm step with nothing to confirm teaches people to dismiss confirm steps. Also notes that **FR-66's stage filter only becomes meaningful now** — until stage transitions existed every application read `Screened`, so the filter would have been a control with one setting |
 | Draft 7 | 27 Aug 2026 | **FR-101 – FR-105 added**: the home screen gains an organisation-wide summary above the per-opening list — active postings, active openings, total applications, and the full five-stage funnel. Two rules exist to keep the numbers honest rather than merely present. **FR-102** requires the funnel to sum to the total, and **FR-103** keeps "needs manual review" out of the funnel because it is a screening status, not a stage — an application carrying it is already counted at its own stage, so listing it as a sixth step would double-count and break the arithmetic. **FR-104** scopes the summary to active postings, since a total that only ever grows stops carrying information. **FR-105** restates §4's exclusion of trend and time-based measures at the one screen most likely to attract them |

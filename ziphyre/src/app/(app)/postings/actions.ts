@@ -61,11 +61,32 @@ function resolveCvMime(file: File): string | null {
  * convenience layered on the real job queue, not a replacement for it.
  * If a deployment's route timeout cuts this short, the jobs are still
  * `queued` and Vercel Cron (vercel.json, every minute) picks them up. */
-function pumpJobsAfterResponse(
-  kinds: JobKind[] = ["screen_application"],
-) {
-  after(() => {
-    runQueuedJobs({ kinds }).catch(() => {});
+function pumpJobsAfterResponse(priority?: JobKind[]) {
+  after(async () => {
+    // `priority` only decides what goes FIRST, never what is eligible.
+    //
+    // This took a `kinds` filter until now, and three call sites passed
+    // ["send_message"] so an outcome email wouldn't queue behind a slow
+    // screening. The cost was invisible and worse: a pump narrowed to
+    // send_message steps straight over a queued screening and leaves it
+    // there. That is exactly what happened on 29 Aug — a
+    // screen_application job created at 05:49:08 sat unclaimed while a
+    // send_message job created at 05:49:09 was picked up four minutes
+    // later by a send-only pump, and the screening waited two hours for
+    // a manual cron run.
+    //
+    // Sending first still gets the fast, user-visible work out; the
+    // second pass then sweeps whatever else is queued, so no kind can
+    // be orphaned by another kind's pump. `runQueuedJobs` stops
+    // claiming near the function's time limit, so the second pass
+    // cannot overrun the first.
+    try {
+      if (priority?.length) await runQueuedJobs({ kinds: priority });
+      await runQueuedJobs({ kinds: ["screen_application", "send_message"] });
+    } catch {
+      // Best-effort by design: the cron is the backstop, and a pump
+      // that throws must not surface as a failed user action.
+    }
   });
 }
 
@@ -104,7 +125,17 @@ export async function createPostingWithOpening(input: {
 
   const { data: posting, error: postingError } = await supabase
     .from("posting")
-    .insert({ organization_id: organizationId, name: postingName })
+    .insert({
+      organization_id: organizationId,
+      name: postingName,
+      // apply_token is NOT NULL with no database default — it was
+      // added that way in M3.5 (backfilled once for postings that
+      // already existed) and this insert never supplied one going
+      // forward. No new posting has been created through this form
+      // since: the only row in production predates the migration.
+      // Same convention `regenerateApplyLink` already uses.
+      apply_token: randomBytes(32).toString("base64url"),
+    })
     .select("id")
     .single();
   if (postingError) return { ok: false, error: postingError.message };
@@ -555,6 +586,12 @@ export async function addCandidatesToOpening(
         source: "manual",
         source_status: "manual",
         submitted_at: new Date().toISOString(),
+        // §10A.4/FR-119: every application needs a status page. The
+        // apply-page path gets one from the M7 migration's backfill,
+        // which only ever ran once — a manual upload since has been
+        // getting no token at all, silently. Found while seeding M8's
+        // sample candidates, themselves manual uploads.
+        status_token: randomBytes(32).toString("base64url"),
       })
       .select("id")
       .single();

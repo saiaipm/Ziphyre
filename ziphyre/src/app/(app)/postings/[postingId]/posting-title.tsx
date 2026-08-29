@@ -13,6 +13,7 @@ export function PostingTitle({
   name,
   openingCount,
   isClosed,
+  isSample,
   createdAt,
   closedAt,
 }: {
@@ -20,6 +21,7 @@ export function PostingTitle({
   name: string;
   openingCount: number;
   isClosed: boolean;
+  isSample: boolean;
   createdAt: string;
   closedAt: string | null;
 }) {
@@ -70,6 +72,13 @@ export function PostingTitle({
     <div>
       <div className="flex items-center gap-2.5">
         <h1 className="text-[28px] leading-tight font-semibold">{name}</h1>
+        {/* FR-138/§10B: always shown, never a setting. Same amber
+            token as the Home and Postings-list mark. */}
+        {isSample && (
+          <span className="rounded-full bg-fit-review-bg px-2.5 py-0.5 text-xs font-medium text-fit-review">
+            Sample
+          </span>
+        )}
         {isClosed && (
           <span className="rounded-full bg-fit-rejected-bg px-2.5 py-0.5 text-xs font-medium text-fit-rejected">
             Closed
