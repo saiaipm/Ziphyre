@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, Download, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,28 @@ import {
 } from "@/lib/apply/schema";
 import { cn } from "@/lib/utils";
 
-type Opening = { id: string; title: string; workLocation: string };
+type Opening = {
+  id: string;
+  title: string;
+  workLocation: string;
+  jdContent: string;
+  jdVersion: number;
+};
 type Errors = Record<string, string>;
+
+/** Same pattern as the admin's `JdCard` export — what screening actually
+ *  ran against, not the original upload, which is never stored. */
+function downloadJd(opening: Opening) {
+  const blob = new Blob([opening.jdContent], {
+    type: "text/markdown;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${opening.title.replace(/[^\w-]+/g, "-")}-job-description.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const CV_BUCKET = "cvs";
 
@@ -35,6 +55,25 @@ export function ApplyForm({
   const [openingId, setOpeningId] = useState(
     openings.length === 1 ? openings[0].id : "",
   );
+  /**
+   * Which JDs are expanded, independent of which role is selected — a
+   * candidate deciding between two roles wants to read both before
+   * picking either, so this is not tied to `openingId`.
+   */
+  const [expandedJds, setExpandedJds] = useState<Set<string>>(
+    // A single opening has nothing to decide between, so its JD opens
+    // by default rather than costing an extra click.
+    new Set(openings.length === 1 ? [openings[0].id] : []),
+  );
+
+  function toggleJd(id: string) {
+    setExpandedJds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   if (submitted) {
     return (
@@ -163,32 +202,74 @@ export function ApplyForm({
 
       <Field label="Which role are you applying for?" error={errors.openingId}>
         <div className="space-y-2">
-          {openings.map((o) => (
-            <label
-              key={o.id}
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition-colors",
-                openingId === o.id
-                  ? "border-primary bg-muted/50"
-                  : "border-border hover:bg-muted/30",
-              )}
-            >
-              <input
-                type="radio"
-                name="openingId"
-                value={o.id}
-                checked={openingId === o.id}
-                onChange={() => setOpeningId(o.id)}
-                className="mt-1"
-              />
-              <span>
-                <span className="block text-sm font-medium">{o.title}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {o.workLocation}
-                </span>
-              </span>
-            </label>
-          ))}
+          {openings.map((o) => {
+            const open = expandedJds.has(o.id);
+            return (
+              <div
+                key={o.id}
+                className={cn(
+                  "overflow-hidden rounded-lg border transition-colors",
+                  openingId === o.id
+                    ? "border-primary bg-muted/50"
+                    : "border-border hover:bg-muted/30",
+                )}
+              >
+                <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
+                  <input
+                    type="radio"
+                    name="openingId"
+                    value={o.id}
+                    checked={openingId === o.id}
+                    onChange={() => setOpeningId(o.id)}
+                    className="mt-1"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">
+                      {o.title}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {o.workLocation}
+                    </span>
+                  </span>
+                </label>
+
+                {/* Reading the JD before deciding which role to apply
+                    for is the ordinary path — this is why it sits under
+                    each option rather than only under the one selected. */}
+                <button
+                  type="button"
+                  onClick={() => toggleJd(o.id)}
+                  aria-expanded={open}
+                  className="flex w-full items-center gap-1.5 border-t border-border/60 px-4 py-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronDown
+                    className={cn(
+                      "size-3.5 shrink-0 transition-transform",
+                      open && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                  {open ? "Hide job description" : "View job description"}
+                </button>
+
+                {open && (
+                  <div className="border-t border-border/60 bg-background px-4 py-3">
+                    <div className="max-h-64 overflow-y-auto text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
+                      {o.jdContent}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => downloadJd(o)}
+                      className="mt-3 flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      <Download className="size-3.5" aria-hidden />
+                      Download job description
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </Field>
 

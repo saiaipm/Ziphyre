@@ -18,7 +18,20 @@ export type PublicPosting = {
   organizationId: string;
   organizationName: string;
   status: "open" | "closed";
-  openings: { id: string; title: string; workLocation: string }[];
+  openings: {
+    id: string;
+    title: string;
+    workLocation: string;
+    /**
+     * What screening actually measures a candidate against — the same
+     * text `JdCard` shows an admin, not the original upload (JD upload
+     * stores text, never the file; see TechDecisions). A candidate who
+     * reads the JD before applying, and most do, has had nothing to
+     * read on this page since it launched.
+     */
+    jdContent: string;
+    jdVersion: number;
+  }[];
 };
 
 /**
@@ -38,7 +51,11 @@ export async function getPublicPosting(
   const { data } = await admin
     .from("posting")
     .select(
-      "id, status, organization_id, organization:organization_id (name), opening (id, title, work_location, current_jd_version_id)",
+      `id, status, organization_id, organization:organization_id (name),
+       opening (
+         id, title, work_location, current_jd_version_id,
+         jd_version:current_jd_version_id (version, content)
+       )`,
     )
     .eq("apply_token", token)
     .maybeSingle();
@@ -48,7 +65,21 @@ export async function getPublicPosting(
   const org = data.organization as unknown as { name: string } | null;
   const openings = (data.opening ?? [])
     .filter((o) => Boolean(o.current_jd_version_id))
-    .map((o) => ({ id: o.id, title: o.title, workLocation: o.work_location }));
+    .map((o) => {
+      const jd = o.jd_version as unknown as {
+        version: number;
+        content: string;
+      } | null;
+      return {
+        id: o.id,
+        title: o.title,
+        workLocation: o.work_location,
+        // `!` is safe: the filter above already requires
+        // current_jd_version_id, and the FK guarantees the join resolves.
+        jdContent: jd!.content,
+        jdVersion: jd!.version,
+      };
+    });
 
   return {
     postingId: data.id,
