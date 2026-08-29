@@ -104,7 +104,17 @@ export async function createPostingWithOpening(input: {
 
   const { data: posting, error: postingError } = await supabase
     .from("posting")
-    .insert({ organization_id: organizationId, name: postingName })
+    .insert({
+      organization_id: organizationId,
+      name: postingName,
+      // apply_token is NOT NULL with no database default — it was
+      // added that way in M3.5 (backfilled once for postings that
+      // already existed) and this insert never supplied one going
+      // forward. No new posting has been created through this form
+      // since: the only row in production predates the migration.
+      // Same convention `regenerateApplyLink` already uses.
+      apply_token: randomBytes(32).toString("base64url"),
+    })
     .select("id")
     .single();
   if (postingError) return { ok: false, error: postingError.message };
