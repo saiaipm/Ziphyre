@@ -51,17 +51,20 @@ export default function SignInPage() {
           on one line so the eye can take the shape in without reading
           the words — which is the only way a panel like this earns its
           space. */}
-      <div className="hidden lg:flex flex-1 flex-col justify-center bg-sidebar px-14 py-16">
+      <div className="hidden lg:flex flex-1 flex-col items-center justify-center bg-sidebar px-14 py-16 text-center">
         <div className="max-w-md">
           <p className="text-[34px] leading-tight font-semibold tracking-tight text-white">
             Hire in a Flash!
           </p>
 
-          <ol className="mt-7 flex flex-wrap items-center gap-x-2 gap-y-2 text-base font-medium text-slate-200">
+          <ol className="mt-7 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-2 text-base font-medium text-slate-200">
             {["AI Screen", "Shortlist", "Interview"].map((step) => (
-              <li key={step} className="flex items-center gap-2">
+              <li key={step} className="flex items-center gap-2.5">
                 {step}
-                <span aria-hidden className="text-slate-600">
+                {/* Was slate-600, which is barely above the panel's own
+                    background — the separators carrying the meaning of
+                    the whole line were the least legible thing on it. */}
+                <span aria-hidden className="text-base text-slate-400">
                   &rarr;
                 </span>
               </li>
@@ -75,7 +78,7 @@ export default function SignInPage() {
         {/* Kept, but cut to one line. Principle 1 is the product's whole
             posture on automated hiring, and dropping it from the only
             screen every admin sees would quietly drop the claim. */}
-        <div className="mt-12 max-w-md border-t border-sidebar-border pt-6">
+        <div className="mt-12 w-full max-w-md border-t border-sidebar-border pt-6">
           <p className="text-sm text-slate-400">
             Screening ranks. <span className="text-slate-200">You decide.</span>
           </p>
