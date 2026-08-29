@@ -4,13 +4,18 @@ import { Plus, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SampleBadge } from "@/components/sample-badge";
+import { SampleDataToggle } from "@/components/sample-data-toggle";
 import { getPostingsForOrg } from "@/lib/postings";
+import { getSessionContext } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Postings" };
 
 export default async function PostingsPage() {
-  const postings = await getPostingsForOrg();
+  const [postings, session] = await Promise.all([
+    getPostingsForOrg(),
+    getSessionContext(),
+  ]);
   const open = postings.filter((p) => p.status === "open");
   const closed = postings.filter((p) => p.status === "closed");
 
@@ -23,12 +28,17 @@ export default async function PostingsPage() {
             Every hiring drive, open and closed.
           </p>
         </div>
-        <Button asChild>
-          <Link href="/postings/new">
-            <Plus className="size-4" aria-hidden />
-            New posting
-          </Link>
-        </Button>
+        <div className="flex items-center gap-4">
+          <SampleDataToggle
+            checked={session?.organization.show_sample_data ?? true}
+          />
+          <Button asChild>
+            <Link href="/postings/new">
+              <Plus className="size-4" aria-hidden />
+              New posting
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {postings.length === 0 ? (

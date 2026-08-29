@@ -11,12 +11,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SampleBadge } from "@/components/sample-badge";
+import { SampleDataToggle } from "@/components/sample-data-toggle";
 import { cn } from "@/lib/utils";
 import { STAGE_TEXT } from "@/lib/stages";
 import type { PostingSummary } from "@/lib/postings";
 
 type Props = {
   postings: PostingSummary[];
+  /** FR-136 — the toggle's current state, for the control in the header. */
+  showSampleData: boolean;
   /** The FR-101 summary, rendered on the server and passed through. */
   summary: React.ReactNode;
 };
@@ -30,7 +33,7 @@ type Props = {
  * candidates through the actual pipeline and shows up in this exact
  * list, marked with `SampleBadge`, rather than a separate fake mode.
  */
-export function OverviewClient({ postings, summary }: Props) {
+export function OverviewClient({ postings, showSampleData, summary }: Props) {
   const open = postings.filter((p) => p.status === "open");
   const closed = postings.filter((p) => p.status === "closed");
 
@@ -43,12 +46,15 @@ export function OverviewClient({ postings, summary }: Props) {
           </h1>
         </div>
 
-        <Button asChild>
-          <Link href="/postings/new">
-            <Plus className="size-4" aria-hidden />
-            New posting
-          </Link>
-        </Button>
+        <div className="flex items-center gap-4">
+          <SampleDataToggle checked={showSampleData} />
+          <Button asChild>
+            <Link href="/postings/new">
+              <Plus className="size-4" aria-hidden />
+              New posting
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {summary}
