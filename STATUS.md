@@ -593,21 +593,30 @@ dismantled. The 42 `job` rows are kept as history; they have no FK to
    shipped, none has recurred. **One real bug found, fixed and
    verified: bug 4 above.**
 
-   **Still not clicked:** the retry on a stuck screening, because
-   there is no stuck screening — every job in the queue has succeeded.
-   Manufacturing one means either submitting a real application or
-   resetting a row by hand. It waits for a real one, or a deliberate
-   test.
-2. **Watch the first screening that arrives with nobody looking.** The
-   pump regression is fixed and reproduced, but the underlying design
-   is unchanged: screening still runs inside a request via `after()`,
-   best-effort, with a **daily** cron as the only backstop on Hobby. A
-   frequent cron needs a paid plan; moving screening to a queue that
-   survives a request is what tech spec §10 already argues for about
-   exports.
-3. Then the Outstanding items below — item 4 (the fallback note lying
-   after a provider reorder) and item 6 (CV bundles built in-request)
-   are the two most likely to embarrass a demo.
+   **Retry has now been clicked too** — on a genuinely stalled
+   screening, which is how Outstanding 13 and 14 were found. It works,
+   and it revealed it had no duplicate guard.
+2. **Done — a screening arrived with nobody looking, and stalled.** That
+   is Outstanding 13: `after()` was handed a callback that returned
+   nothing, so the pump was killed before it claimed anything. Fixed and
+   re-tested: 3 seconds from queued to claimed, unattended.
+
+   **The design is still unchanged, and that argument still stands.**
+   Screening runs inside a request via `after()`, best-effort, with a
+   **daily** cron as the only backstop on Hobby. What today proved is
+   that this design has no safety margin: one wrong callback shape and
+   the whole path goes silent with nothing in the logs. A frequent cron
+   needs a paid plan; moving screening to a queue that survives a
+   request is what tech spec §10 already argues for about exports.
+3. **Walk the paths nobody has walked.** Four of today's six defects
+   were paths that compiled and had never been used by a person. The
+   ones still unwalked: rejecting *without* the email (see item 16),
+   bulk sends against more than one candidate, the un-reject correction
+   since M7, export and the CV bundle (Outstanding 6), and the purge
+   against a posting that has genuinely aged out.
+4. Then the rest of Outstanding — item 4 (the fallback note lying after
+   a provider reorder) and item 6 (CV bundles built in-request) are the
+   two most likely to embarrass a demo.
 
 ---
 
@@ -654,21 +663,43 @@ purge nulls it, §10A.5) and `outcome_sent_at`; `opening` gained
 
 | Posting | Opening | Applications |
 |---|---|---|
-| Finance Hiring, Demo | Chartered Accountant | **0** — cleared 29 Aug |
-| Finance Hiring, Demo | Accounts Executive | **0** — cleared 29 Aug |
+| Finance Hiring, Demo | Chartered Accountant | 1 Rejected — the end-to-end test |
+| Finance Hiring, Demo | Accounts Executive | 0 |
 | **Sample pipeline — Chartered Accountant** (`is_sample`) | Chartered Accountant | 6 Screened — the fabricated set |
 
 **No real person's data is left in the product.** The ten applications
-on the non-sample posting were retired 29 Aug (see above); the six that
-remain are fabricated. That posting keeps its openings, 3 JD versions,
-29 requirements and its apply token, so it is empty rather than
-dismantled — ready for an end-to-end apply test from zero.
+on the non-sample posting were retired 29 Aug (see above); the six
+sample candidates are fabricated, and the one remaining real-posting
+application is the maintainer's own test.
 
-Every application carries a `status_token`. **`message` is empty**: all
-five sent rows cascaded with the applications they belonged to, so the
-outbox reads zero until the next send. `message_template` is still
-empty too, which is correct: defaults live in code until a customer
+Every application carries a `status_token`. `message` holds **3 sent
+rows, no failures** — the apply confirmation, an interview invite and a
+rejection, all from the end-to-end test below. `message_template` is
+still empty, which is correct: defaults live in code until a customer
 edits one, and none has been.
+
+**The whole candidate journey was walked end to end on production, 29
+Aug** — the first time it has been. Apply → CV upload → screening
+unattended in 3s → confirmation email with a working status link →
+stage changes reflected on the status page → interview invite whose
+booking link the user followed through to a real slot → rejection
+email → the page flipping to "Not moving forward".
+
+The ordering that matters held: `outcome_sent_at` was set **0.25s
+after** Gmail accepted the rejection, not when the button was clicked.
+FR-123's gate therefore arms only once a message has actually gone — a
+failed send leaves the candidate reading "Received" rather than
+learning their outcome from a page nobody sent them to.
+
+**It cost six defects, none visible to typecheck, lint or a green
+build** (Outstanding 3a, 13, 14, 15 and the status-page copy). Four of
+the six share one shape: **a path that was built but never walked.**
+The apply page had never minted a token, the shortlist dialog's invite
+checkbox had never been ticked, the outbox Retry had never been
+pressed, and no screening had ever run with nobody watching. Each
+worked in the sense that it compiled, and failed the first time a
+person used it. Walking the remaining unwalked paths is worth more than
+any amount of re-reading the ones that now work.
 
 **Two admins**, both active in the same organisation:
 `saiphanimba09@gmail.com` (original) and **`ziphyre.ai@gmail.com` (the
@@ -904,6 +935,27 @@ and must `await` the work.**
 Tech spec §10's argument still stands and is untouched by this: screening
 should not run inside a request at all. This made the in-request design
 fail earlier and more quietly than expected, but it did not create it.
+
+**16. Open, and needs a decision: a silent rejection walks the status
+page backwards.** `toCandidateState` maps `rejected` with no
+`outcome_sent_at` to **"Received"**. That is right for a candidate who
+was only ever screened. It is questionable for one who has already been
+shown **"Shortlisted"**: rejecting them without sending the email moves
+their page from Shortlisted back to Received, with no explanation and
+no message.
+
+`offer.ts` states PN-004's rule as "the page never tells a candidate
+something worse than what they have already been told" — and this does
+exactly that. The gate was built to stop the page *revealing* a
+rejection; nobody appears to have considered it **retracting** a better
+status the candidate had already seen.
+
+Not fixed because the right answer is a product decision, not a patch.
+Plausible options: hold the page at its best-seen state until an
+outcome is actually sent (needs a column to remember it), or refuse the
+silent shortlist→reject transition, or accept it and say so here.
+**Untested** — the maintainer rejected *with* the email, so this path
+has not been walked; the reasoning above is from the code.
 
 **15. Fixed — the shortlist dialog's invite checkbox did nothing.**
 FR-107 has two ways in, and only the standalone one was ever wired up.
