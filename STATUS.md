@@ -17,8 +17,9 @@ file is deliberately just the moving parts.
 | `ProductNotes/PN-002-…md` | Why Google intake was replaced by a hosted apply page |
 | `ProductNotes/PN-003-…md` | Why the screening prompt is visible but not editable |
 | `ProductNotes/PN-004-…md` | Candidate communications — why SMTP not OAuth, and the status-page rules |
-| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-105 (Draft 9; FR-1–4, 19–29, 36, 62–65 retired) |
-| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 9) |
+| `ProductNotes/PN-005-…md` | Sample data — why fabricated-but-really-screened, why a toggle not a swap |
+| `docs/functional-specs/admin-dashboard-intake-screening.md` | What it does — FR-1 to FR-141 (Draft 10; FR-1–4, 19–29, 36, 62–65 retired) |
+| `docs/tech-specs/admin-dashboard-intake-screening.md` | How it's built — schema, jobs, routes, milestones (Draft 10) |
 | `Testing/README.md` | Why the baseline file is gitignored, and what it's for |
 
 **Read `ziphyre/AGENTS.md` before writing code.** This Next.js version has
@@ -380,6 +381,92 @@ before anything new:
 Then: M8, or the Outstanding items below — item 4 (the fallback note
 lying after a provider reorder) and item 6 (CV bundles built in-request)
 are the two most likely to embarrass a demo.
+
+**M8 (sample data) — done, on `m8-mock-demo-data`.** PN-005, functional
+spec Draft 10 (FR-136 – FR-141), tech spec Draft 10 (§10B). Migration
+`20260829090000_m8_sample_data.sql`, applied.
+
+Every candidate in the product was a real person — right for M2, wrong
+for the moment anyone outside this project sees a demo. Two things
+ship: a settings switch, and six fabricated candidates it governs.
+
+*The toggle.* `posting.is_sample` (default false) and `organization.
+show_sample_data` (default true), filtered in `getPostingsForOrg()` and
+`getOverviewMetrics()` — not RLS, since this is a per-request display
+preference rather than a tenant boundary. A `SampleBadge` marks a
+sample posting everywhere it appears. Verified against real data by
+running the exact filter expression both ways: with the toggle on,
+both the real posting and the sample one list; off, only the real one
+does.
+
+**Retired `lib/seed.ts`'s `seedPostings` and Home's "Preview with
+sample data" switch along with it.** Found while building this —
+pre-database fixture scaffolding, explicitly commented "delete this
+file once real data flows," client-local and unpersisted, showing
+invented counts with no real candidates behind them and ids nothing
+could click into. A real seeded posting replaces it outright rather
+than living alongside it.
+
+*The six candidates.* Indian names, three PDF / three DOCX, generated
+locally (`MockData/CA-Role-Sample-CVs/`) and seeded by
+`ziphyre/scripts/seed-sample-data.ts` — not through the browser, since
+no authenticated session is available to a script or to this
+assistant, and not through raw SQL either. The script calls this
+project's own real functions directly: `extractRequirements()` for the
+requirement list, and `runScreenApplication()` — the literal job
+handler a real candidate's CV runs through — for every score. Nothing
+here is authored by hand; TechDecisions §7's rule holds for fabricated
+candidates exactly as it holds for real ones.
+
+**Real result, compared honestly in `Testing/baseline-ranking-mock-CA-role.md`
+(safe to commit — no real person, unlike its counterpart).** The two
+ends landed exactly as intended: both qualified, experienced CAs
+shortlisted (9.0, 8.2); both clear mismatches rejected (4.0, 2.4), in
+the right relative order. **Neither "neutral" candidate landed in the
+middle** — both were written to miss the CA must-have, and a missed
+must-have is a hard gate in this product by design, so there is no path
+to a middle score once one is missed. That is a flaw in how the two
+fixture CVs were built, not in the screening — recorded rather than
+re-engineered, in the same spirit as reporting the M2 result honestly
+rather than tuning it to look clean.
+
+**One real, new model-limitation finding, alongside the Tally
+hallucination in TechDecisions §7.** One candidate's CV states plainly
+"Chartered Accountant — ICAI, 2026." The model marked the qualification
+must-have unmet, reasoning that 2026 was "the expected qualification
+year" — reading it as a future date, though nothing in the screening
+prompt or its inputs gives the model today's date to check against.
+Today is 29 August 2026; the qualification is eight months in the past.
+Accepted, not fixed, for the same reason the Tally case was: a second,
+independent instance of the model inferring something a CV doesn't
+actually leave ambiguous, worth revisiting if it recurs against a real
+candidate.
+
+**Three real bugs found and fixed while building this, none related to
+sample data itself:**
+
+1. **Creating a new posting has been broken since M3.5, six days ago.**
+   `posting.apply_token` went `NOT NULL` with no database default;
+   `createPostingWithOpening` never supplied one going forward. Exactly
+   one posting has ever existed in production — created three days
+   *before* the migration, so it was backfilled rather than created
+   through the broken path. Nobody hit this by accident because every
+   session since has worked on that one posting. Fixed: same
+   `randomBytes(32).toString("base64url")` convention
+   `regenerateApplyLink` already used.
+2. **Manual upload never generated a `status_token`.** The apply-page
+   path got its token from the M7 migration's one-time backfill;
+   `addCandidatesToOpening`'s insert was never updated to generate one
+   going forward. Would have surfaced as a rejection email with a
+   broken status link — the same FR-124 failure fixed at the template
+   level 28 Aug, this time because the token never existed. Two live
+   rows were missing it; both backfilled by hand, and new manual
+   uploads now generate one at insert.
+3. (Recorded above) the stale preview toggle.
+
+**What's still the user's own step, deliberately not done here:**
+retiring the seven real CVs. Irreversible, real people's data, on their
+own timeline.
 
 ---
 
