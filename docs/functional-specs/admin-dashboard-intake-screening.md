@@ -384,7 +384,7 @@ Validated against the seven real Chartered Accountant applicants and the human r
 
 | Element | Copy |
 |---|---|
-| Product area name | Screening Desk |
+| Product area name | Ziphyre — AI Powered Screening Desk (the subtitle under the wordmark, on sign-in and in the sidebar) |
 | Primary nav | Home · Postings · Settings |
 
 ### Posting and opening setup

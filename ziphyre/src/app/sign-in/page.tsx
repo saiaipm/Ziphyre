@@ -15,7 +15,7 @@ export default function SignInPage() {
           <div className="mb-9">
             <span className="text-lg font-semibold tracking-tight">Ziphyre</span>
             <span className="mt-0.5 block text-xs tracking-wide text-muted-foreground">
-              Screening Desk
+              AI Powered Screening Desk
             </span>
           </div>
 
@@ -33,31 +33,51 @@ export default function SignInPage() {
             </p>
           )}
 
-          <p className="mt-9 border-t border-divider pt-5 text-xs leading-relaxed text-muted-foreground">
-            Ziphyre only ever reads your forms, responses and uploaded CVs. It
-            has no permission to change them.
-          </p>
+          {/* The line that stood here — "Ziphyre only ever reads your
+              forms, responses and uploaded CVs. It has no permission to
+              change them." — was written for the Google intake path and
+              was left behind when PN-002 removed it in M3.5. By then it
+              had become false: Ziphyre stores CVs in its own bucket and
+              holds the only copy of every one it receives, which is
+              exactly why §11's purge is load-bearing. A promise the
+              product cannot keep is worse on a sign-in screen than no
+              promise at all, so there is nothing here now. */}
         </div>
       </div>
 
-      {/* Right: what this product is for */}
+      {/* Right: what this product is for.
+          Four steps read at a glance where a paragraph did not get read
+          at all. The chain is laid out as steps rather than run together
+          on one line so the eye can take the shape in without reading
+          the words — which is the only way a panel like this earns its
+          space. */}
       <div className="hidden lg:flex flex-1 flex-col justify-center bg-sidebar px-14 py-16">
-        <blockquote className="max-w-md">
-          <p className="text-[22px] leading-snug font-medium text-white">
-            Hiring stops being the thing that quietly eats a week.
+        <div className="max-w-md">
+          <p className="text-[34px] leading-tight font-semibold tracking-tight text-white">
+            Hire in a Flash!
           </p>
-          <p className="mt-5 text-sm leading-relaxed text-slate-400">
-            Applications arrive, get read against the job description, and
-            arrive in front of you already ordered — with the reasoning
-            attached, so you can disagree with confidence.
-          </p>
-        </blockquote>
 
+          <ol className="mt-7 flex flex-wrap items-center gap-x-2 gap-y-2 text-base font-medium text-slate-200">
+            {["AI Screen", "Shortlist", "Interview"].map((step) => (
+              <li key={step} className="flex items-center gap-2">
+                {step}
+                <span aria-hidden className="text-slate-600">
+                  &rarr;
+                </span>
+              </li>
+            ))}
+            <li className="text-white">Hire! 🔥</li>
+          </ol>
+
+          <p className="mt-5 text-lg text-slate-400">Effortlessly 🚀</p>
+        </div>
+
+        {/* Kept, but cut to one line. Principle 1 is the product's whole
+            posture on automated hiring, and dropping it from the only
+            screen every admin sees would quietly drop the claim. */}
         <div className="mt-12 max-w-md border-t border-sidebar-border pt-6">
-          <p className="label-meta mb-2 text-slate-500">The rule</p>
-          <p className="text-sm leading-relaxed text-slate-300">
-            Screening orders the pile. A person decides who moves forward —
-            always, and without exception.
+          <p className="text-sm text-slate-400">
+            Screening ranks. <span className="text-slate-200">You decide.</span>
           </p>
         </div>
       </div>

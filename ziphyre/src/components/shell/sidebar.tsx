@@ -99,7 +99,7 @@ export function Sidebar() {
               Ziphyre
             </span>
             <span className="mt-0.5 block text-[11px] tracking-wide text-slate-400">
-              Screening Desk
+              AI Powered Screening Desk
             </span>
           </Link>
         )}
