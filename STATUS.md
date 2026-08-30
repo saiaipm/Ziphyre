@@ -649,8 +649,12 @@ baseline's "treat CA as a hard gate" scenario). Compared to
 
 ## Verified state, 29 Aug 2026
 
-**Git:** on `main`, M8 merged. Everything described above is merged; no
-unmerged branch carries live work.
+**Git:** on `main`, in sync with `origin/main`, working tree clean.
+Everything described above is merged and deployed — `m8-toggle-refresh`
+and `fix-screening-pump` (this session) as well as the earlier
+`m7-outcome-email` and `m8-mock-demo-data`. **No unmerged branch carries
+live work**, and production runs the head of `main`; every commit
+auto-deploys.
 
 **Supabase** (`tkfxxhmserqkeoghyjmx`, "Ziphyre AI"): **17 tables**, RLS on
 all. The M2/M4 set plus M7's `mail_settings`, `message_template` and
@@ -830,9 +834,14 @@ token, so a purged row cannot be found by token at all) and it must not
 try, since that would confirm which tokens are real. The copy is now
 true of both cases and asserts no deletion.
 
-**3b. Production's send-check spins where local works.** Points at
-`SUPABASE_SERVICE_ROLE_KEY` on Vercel — the offer reads mail settings
-through the admin client. It would break every send offer in production.
+**3b. Resolved 29 Aug — the production send-check works.** This was
+suspected to be a missing `SUPABASE_SERVICE_ROLE_KEY` on Vercel, since
+the offer reads mail settings through the admin client. It was in fact
+the `pdf-parse` top-level import breaking every server action in
+`postings/actions.ts` (fixed 28 Aug by importing it lazily). Proven on
+29 Aug: both the interview-invite and the rejection offers rendered
+their recipients on production and both sends went through, which is
+not possible without the admin client resolving.
 
 **4. A screening's "used a fallback" note is computed against today's
 provider order, so it lies after a reorder.** `getApplicationsForOpening`
@@ -936,50 +945,6 @@ Tech spec §10's argument still stands and is untouched by this: screening
 should not run inside a request at all. This made the in-request design
 fail earlier and more quietly than expected, but it did not create it.
 
-**16. Open, and needs a decision: a silent rejection walks the status
-page backwards.** `toCandidateState` maps `rejected` with no
-`outcome_sent_at` to **"Received"**. That is right for a candidate who
-was only ever screened. It is questionable for one who has already been
-shown **"Shortlisted"**: rejecting them without sending the email moves
-their page from Shortlisted back to Received, with no explanation and
-no message.
-
-`offer.ts` states PN-004's rule as "the page never tells a candidate
-something worse than what they have already been told" — and this does
-exactly that. The gate was built to stop the page *revealing* a
-rejection; nobody appears to have considered it **retracting** a better
-status the candidate had already seen.
-
-Not fixed because the right answer is a product decision, not a patch.
-Plausible options: hold the page at its best-seen state until an
-outcome is actually sent (needs a column to remember it), or refuse the
-silent shortlist→reject transition, or accept it and say so here.
-**Untested** — the maintainer rejected *with* the email, so this path
-has not been walked; the reasoning above is from the code.
-
-**15. Fixed — the shortlist dialog's invite checkbox did nothing.**
-FR-107 has two ways in, and only the standalone one was ever wired up.
-The move dialog offered the invite correctly whenever the target stage
-was Shortlisted, the admin ticked it, and `sendOutcome: true` reached
-`changeApplicationStage` — which read that flag **only** for a move to
-`rejected` and for reversals. Anything else silently dropped it.
-
-So shortlisting with the box ticked moved the candidate, wrote the
-stage event, and queued nothing: no `message` row, no job, no email,
-and no error anywhere. Found 29 Aug the first time a real shortlist was
-performed. `sendInterviewInvites` — the standalone button on a
-shortlisted row — was always fine, which is why this survived M7's
-round of real sends.
-
-Worth naming the shape, because it is the same one as the missing
-`status_token`: **the UI offered something the server had no branch
-for.** A tickbox that mails a stranger and quietly does nothing is the
-worst way for that to fail, since the visible outcome is simply a
-candidate who never hears anything. The new branch is guarded on
-`reversedIds` being empty so precedence matches the dialog: a candidate
-moved off a rejection they were told about gets the correction, never
-an invite as well.
-
 **14. Fixed — Retry no longer double-screens.** `retryScreening` called
 `enqueueJob` unconditionally, never checking whether a
 `screen_application` job was already `queued` for that application. The
@@ -1006,6 +971,50 @@ non-determinism. It matters because FR-49 promises two scores can be
 compared honestly, and nothing in the product tells an admin that a
 rescreen may move a number without anything about the candidate having
 changed. Worth a line of UI copy at some point; recorded here meanwhile.
+
+**15. Fixed — the shortlist dialog's invite checkbox did nothing.**
+FR-107 has two ways in, and only the standalone one was ever wired up.
+The move dialog offered the invite correctly whenever the target stage
+was Shortlisted, the admin ticked it, and `sendOutcome: true` reached
+`changeApplicationStage` — which read that flag **only** for a move to
+`rejected` and for reversals. Anything else silently dropped it.
+
+So shortlisting with the box ticked moved the candidate, wrote the
+stage event, and queued nothing: no `message` row, no job, no email,
+and no error anywhere. Found 29 Aug the first time a real shortlist was
+performed. `sendInterviewInvites` — the standalone button on a
+shortlisted row — was always fine, which is why this survived M7's
+round of real sends.
+
+Worth naming the shape, because it is the same one as the missing
+`status_token`: **the UI offered something the server had no branch
+for.** A tickbox that mails a stranger and quietly does nothing is the
+worst way for that to fail, since the visible outcome is simply a
+candidate who never hears anything. The new branch is guarded on
+`reversedIds` being empty so precedence matches the dialog: a candidate
+moved off a rejection they were told about gets the correction, never
+an invite as well.
+
+**16. Open, and needs a decision: a silent rejection walks the status
+page backwards.** `toCandidateState` maps `rejected` with no
+`outcome_sent_at` to **"Received"**. That is right for a candidate who
+was only ever screened. It is questionable for one who has already been
+shown **"Shortlisted"**: rejecting them without sending the email moves
+their page from Shortlisted back to Received, with no explanation and
+no message.
+
+`offer.ts` states PN-004's rule as "the page never tells a candidate
+something worse than what they have already been told" — and this does
+exactly that. The gate was built to stop the page *revealing* a
+rejection; nobody appears to have considered it **retracting** a better
+status the candidate had already seen.
+
+Not fixed because the right answer is a product decision, not a patch.
+Plausible options: hold the page at its best-seen state until an
+outcome is actually sent (needs a column to remember it), or refuse the
+silent shortlist→reject transition, or accept it and say so here.
+**Untested** — the maintainer rejected *with* the email, so this path
+has not been walked; the reasoning above is from the code.
 
 ### Deliberate deviations, recorded so they are not mistaken for oversights
 
