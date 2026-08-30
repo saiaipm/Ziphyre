@@ -1,7 +1,7 @@
 # Ziphyre — Product Context
 
-**Status:** Living document. Version 1.2, covering the initial product scope.
-**Last updated:** 16 August 2026 — Workspace renamed Organization and given a profile (timezone and currency are load-bearing). Previously: the posting/opening distinction and must-have requirements, following PN-001.
+**Status:** Living document. Version 1.3, covering the initial product scope.
+**Last updated:** 29 August 2026 — Caught up with what PN-002 and PN-004 settled: intake is a Ziphyre-hosted application page, not a third-party form; no message sends itself except the acknowledgement; candidates are told how long their data is kept. Pillar 3 no longer claims calendar-reading it does not do, and Pillar 4 no longer claims automatic sending the product deliberately refuses. Previously (1.2, 16 August): Workspace renamed Organization and given a profile; before that, the posting/opening distinction and must-have requirements, following PN-001.
 
 ---
 
@@ -25,6 +25,9 @@ These were not explicitly specified at kickoff. They are recorded here as produc
 - **Screening scores are triage, never verdicts.** A score orders a queue for a human. It never rejects, never advances, and is never shown to the candidate.
 - **A job opening is the organising object.** Applications, screening, scheduling, and the dashboard all hang off a specific opening being hired for. Openings are grouped into postings — a posting is what gets advertised and shared; an opening is what a candidate applies to and what screening measures against.
 - **Primary market is Indian MSMEs.** This shapes assumptions about hiring volume, team size, budget sensitivity, mobile-first candidates, and communication habits (email plus phone/messaging, not email alone).
+- **Candidates apply on a page Ziphyre hosts, reached by one unguessable link per posting.** Intake is ours, not a third-party form the customer has to assemble. Neither side needs an account of any kind. The corollary is a boundary, not an omission: there is no public index of roles and no browsable careers page, because that is the line between a hosted application page and the job board Non-Goal 3 refuses. *(PN-002)*
+- **No message sends itself, with exactly one exception.** Every message to a candidate is offered to a person, who chooses to send it. The exception is the acknowledgement that their application arrived — the one message nobody should have to remember. This is stronger than "a human decides outcomes": a human also decides every time a candidate is told anything. *(PN-004)*
+- **Candidates are told how long their data is kept, and it is then deleted.** The retention window is a promise made on the application page, in plain language, before anyone submits — which makes it a product commitment rather than a data-handling detail. *(Principle 9)*
 
 ---
 
@@ -154,6 +157,10 @@ Six capability areas. Every feature should be traceable to one of them; a Produc
 
 **How it connects.** This is the foundation. The requirements captured here are the yardstick Screening measures against, the context Scheduling and Communication personalise from, and the container the Dashboard organises by. Weak role definition degrades every downstream pillar.
 
+**Two ways in, deliberately.** Candidates apply themselves through the hosted page, and the team can put CVs in directly — because real hiring in this market arrives by WhatsApp and forwarded email as often as through a form, and a product that only accepts one of those routes gets a spreadsheet built alongside it. Both routes produce the same application, screened the same way. Where a candidate came from is recorded, never a difference in how they are treated.
+
+**The requirements step is where a human is deliberately kept in the loop.** Requirements are read out of the job description, but nothing is marked non-negotiable without a person saying so. Real job descriptions are ambiguous about what is truly mandatory, and resolving that ambiguity by inference would silently reorder every shortlist that follows. *(PN-001)*
+
 ### Pillar 2 — Screening & Scoring
 
 **What it does.** Evaluates each submitted CV against the role's requirements at the initial-screening stage, produces a relevance score, and shows the reasoning behind it — so the hiring team starts from an ordered queue with the strongest matches surfaced first.
@@ -166,19 +173,23 @@ Six capability areas. Every feature should be traceable to one of them; a Produc
 
 ### Pillar 3 — Interview Scheduling & Coordination
 
-**What it does.** Turns "let's talk to this person" into a confirmed meeting without a human brokering it. Works from interviewer availability — read from their work calendar, or from slots the team defines — offers real options to the candidate, confirms both sides, and handles rescheduling and cancellation self-service.
+**What it does.** Turns "let's talk to this person" into a booked meeting without anyone brokering it over email. The team makes their availability reachable, the candidate picks a time themselves, and the back-and-forth that normally costs a week does not happen.
 
 **Who it's for.** Meera (removes the chasing), Priya (removes the back-and-forth), Arjun (interviews arrive on the calendar with context attached).
 
-**How it connects.** Triggered by shortlisting decisions from Pillar 5. Uses message templates from Pillar 4 to invite and remind. Every scheduling event updates the candidate's stage in Pillar 5 and their visible status in Pillar 6.
+**How it connects.** Triggered by shortlisting decisions from Pillar 5. Uses message templates from Pillar 4 to invite. Scheduling outcomes belong in the candidate's stage in Pillar 5 and their visible status in Pillar 6.
+
+**Scope note.** This pillar is deliberately stated as intent, not mechanism. Owning availability — reading interviewers' calendars, brokering slots, handling reschedules and cancellations natively — is a real and much larger product than carrying the customer's own booking link, and the two should not be confused when planning. Which of them exists today belongs in the build status, not here. What is durable is the outcome: the candidate books, nobody chases.
 
 ### Pillar 4 — Communication & Outreach Templates
 
-**What it does.** Lets the team compose reusable messages for each moment in the hiring process — acknowledgement, invitation, reminder, regret, offer — which are personalised per candidate and sent at the right time, either automatically or with a click.
+**What it does.** Lets the team compose reusable messages for each moment in the hiring process — acknowledgement, invitation, regret, correction — personalised per candidate, and **offered at the moment the decision is made** so that sending is one deliberate click rather than a task to remember later.
 
 **Who it's for.** Meera and Rahul author and configure. Priya receives.
 
-**How it connects.** The delivery mechanism for the whole product. Scheduling sends through it, stage changes trigger through it, rejections go out through it. Consistent tone here *is* the candidate experience.
+**How it connects.** The delivery mechanism for the whole product. Shortlisting offers the invitation, rejecting offers the regret, reversing a rejection offers the correction. Consistent tone here *is* the candidate experience.
+
+**Guardrail.** Nothing sends itself except the acknowledgement (see Decisions taken as given). Every other message is offered unticked, names how many real people will receive it, and goes only when someone chooses. This is what keeps Principle 4 — "silence is a bug" — from quietly becoming "the product mails candidates on its own": the product's job is to make the message impossible to forget, not to send it unasked. The two failures are not symmetrical. Forgetting to tell a candidate is repairable; telling them the wrong thing automatically is not.
 
 ### Pillar 5 — Pipeline Tracking & Shortlisting
 
@@ -188,6 +199,8 @@ Six capability areas. Every feature should be traceable to one of them; a Produc
 
 **How it connects.** The hub. Shows Pillar 2's scores, triggers Pillar 3's scheduling and Pillar 4's messages, and is the source of the status Pillar 6 shows candidates. Updating the pipeline should be a side effect of doing the work, never a separate chore.
 
+**It also has to leave the product.** A shortlist is frequently discussed with someone who will never log in — a founder, a client, a panel member. Getting candidates out of Ziphyre in a form that can be mailed or printed, carrying the same order and the same reasoning shown on screen, is part of this pillar rather than an afterthought to it. A pipeline nobody can share is a pipeline that gets retyped into a spreadsheet.
+
 ### Pillar 6 — Candidate Transparency
 
 **What it does.** Gives every candidate a way to see where their application stands — under evaluation, approved to move forward, or not proceeding — plus what happens next and when, without needing to chase anyone or create an account.
@@ -195,6 +208,8 @@ Six capability areas. Every feature should be traceable to one of them; a Produc
 **Who it's for.** Priya. Indirectly serves Meera by removing "any update?" follow-ups.
 
 **How it connects.** A read-only reflection of Pillar 5, deliberately simplified. Internal stages are detailed; what the candidate sees is a plain-English summary. The rules for translating one into the other are a product decision, not a display detail.
+
+**The translation is not a formatting choice — it is the pillar.** Two rules carry most of the weight. A candidate is never shown an outcome a person has not chosen to send them: an internal decision that has not been communicated must read as still in progress, or the page becomes a way of finding out you were rejected from a message nobody sent. And the page carries the retention promise, so a link that has outlived the data explains that plainly instead of failing. Getting this wrong does not look like a bug to the candidate — it looks like the company treating them carelessly.
 
 ---
 
@@ -388,7 +403,7 @@ The obvious adjacent gap: offers, acceptance, and the handoff into onboarding �
 | **Shortlist** | The set of candidates a human has selected to move forward to interview. A human decision, informed by screening — never produced automatically. |
 | **Outreach template** | A reusable message for a specific moment in the process (acknowledgement, invitation, reminder, regret, offer), personalised per candidate when sent. |
 | **Interview round** | A batch of interviews of the same type for the same role — for example "first-round calls for the sales role". |
-| **Availability** | When an interviewer can take interviews. Either read from their work calendar or defined as slots by the team. |
+| **Availability** | When an interviewer can take interviews. Terms in this row and the two below it belong to the fuller scheduling capability described in Pillar 3's scope note — they name concepts the product reasons about, not a claim about what exists today. |
 | **Slot** | A specific offerable interview time. Candidates choose from slots rather than negotiating times. |
 | **Reschedule** | Moving a confirmed interview to a new time. Can be initiated by either the candidate or the hiring team, without a human broker. |
 | **Status link** | The private link that lets a candidate view their own application status without an account or password. |
