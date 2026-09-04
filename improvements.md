@@ -1,8 +1,10 @@
 # Ziphyre — Improvements & Future Scope
 
 **What this is.** Candidate improvements, assessed honestly — including
-two that were proposed and one of which should not be built as
-proposed. Ordered by value per unit of effort, not by ambition.
+three that were proposed, of which one should not be built as stated,
+one should be built in a narrower form than proposed, and one turned
+out to be the best idea on the list. Ordered by value per unit of
+effort, not by ambition.
 
 **What this is not.** A roadmap commitment, and not a bug list.
 Outstanding defects live in `STATUS.md`; product direction lives in
@@ -10,7 +12,7 @@ Outstanding defects live in `STATUS.md`; product direction lives in
 
 ---
 
-## Part 1 — Two proposals, assessed
+## Part 1 — Three proposals, assessed
 
 ### Proposal A — RAG to ground the model's understanding
 
@@ -117,6 +119,83 @@ model is asked to hold.
 
 ---
 
+### Proposal C — rate candidates by hand and use them as a reference set
+
+**The strongest of the three proposals — but "golden dataset" means
+three different things, and only two of them are worth doing.**
+
+**First, the finding that makes this proposal land.** The five
+components have **no rubric at all.** This is the complete scoring
+instruction in the system prompt:
+
+> Score every component 0–10. Components measure: jdFit (how much of
+> the day-to-day work in the JD this person has actually done),
+> experience (length/seniority against what's asked), skills
+> (tools/technical proficiencies named in the JD), qualification
+> (credentials/education against what's asked), location …
+
+One clause per component. **Nothing anywhere says what separates a 6
+from a 7.** The only constraint is the schema: an integer, 0–10.
+
+That is very likely why the same CV scored 9.0 then 8.6 minutes apart.
+The component that moved was **skills, 9 then 7** — and with no anchor
+for what a 7 means, drift is expected behaviour rather than a mystery.
+
+#### C1 — As an evaluation set: necessary, but improves nothing by itself
+
+Rate candidates, then measure the model against those ratings. This is
+the evaluation harness in Part 2. **It does not make the model more
+accurate — it makes accuracy measurable.**
+
+Worth stating plainly, because it is a common and expensive confusion:
+teams build an eval set, observe that quality did not change, and
+conclude the exercise failed. Its whole value is that every subsequent
+change becomes falsifiable.
+
+#### C2 — As calibration examples in the prompt: the best cheap win available
+
+Put a handful of rated examples in the prompt — this CV, against this
+JD, scored skills 7, and here is the reasoning. The model calibrates
+against real anchors instead of inventing a scale on each run.
+
+**This is very likely a better use of effort than Proposal B**: it
+attacks the variance directly, costs a few hundred extra input tokens
+rather than 5× the call volume, and needs no new architecture.
+
+**A cheaper version needs no dataset at all.** Hand-written anchors —
+one sentence each for what a 2, a 5 and an 8 look like per component —
+can ship today and capture most of the benefit. Rated real examples are
+the better version of the same idea, not a prerequisite for it.
+
+#### C3 — As fine-tuning data: wrong for this product, at least for now
+
+Fine-tuning needs hundreds of examples, pins you to one provider, and
+breaks two properties this product deliberately has: the multi-provider
+fallback chain, and the guarantee that any two scores are comparable
+because the model and prompt version behind each are recorded. Revisit
+only if C2 has been done and measurably falls short.
+
+#### Two caveats to carry into any customer conversation
+
+**Rated examples encode the rater's biases.** Calibrate to one hiring
+manager's judgement and you have automated that manager's taste,
+including whatever bias sits inside it. The product would become
+*consistent* — but consistently reproducing one person's preferences,
+which is not what Principle 8 means by "the same yardstick for every
+candidate." Mitigation: multiple raters, and treating disagreement
+between them as information rather than noise. Inter-rater agreement in
+hiring is typically poor, and a set built from one person fits noise as
+readily as signal.
+
+**Cold start.** A new customer has no rated data on day one, and
+calibration is unlikely to transfer across role types — a set built on
+Chartered Accountant applicants will not anchor a sales role. So this
+is a "gets better the more you use it" capability, not a launch
+feature. Hand-written anchors (C2, cheap version) are what covers day
+one.
+
+---
+
 ## Part 2 — What I would do first, and why
 
 ### 1. Put today's date in the prompt
@@ -143,7 +222,17 @@ accuracy, must-have verdict accuracy, and run-to-run variance.
 **Everything else on this list is guesswork without it.** It is also
 the least glamorous item, which is precisely why it gets deferred.
 
-### 3. Require evidence quotes on every must-have verdict
+### 3. Give the component scores an anchor
+
+Today nothing in the prompt says what a 6 means versus a 7 — see
+Proposal C. Add one sentence per component describing what a 2, a 5 and
+an 8 look like.
+
+This needs no dataset, no architecture, and no extra call. It is the
+cheapest available attack on the run-to-run variance, and it makes
+every score easier to defend to an admin who asks "why 7?".
+
+### 4. Require evidence quotes on every must-have verdict
 
 The prompt already says "if you cannot quote or closely paraphrase the
 CV text that satisfies a must-have, it is not met." Make that
@@ -157,7 +246,7 @@ quote fails the check rather than reaching a human as fact. It attacks
 the same problem as the dictionary in Proposal A, more cheaply, and
 without a corpus to maintain.
 
-### 4. Move screening out of the request
+### 5. Move screening out of the request
 
 Tech spec §10 already argues this. Screening runs inside a web request
 via `after()`, best-effort, with a daily cron as the only backstop on
@@ -169,7 +258,7 @@ Needs a paid plan for frequent cron, or a queue that outlives the
 request. **This is the main thing standing between the current build
 and something a paying customer depends on.**
 
-### 5. Record `was_fallback` at write time
+### 6. Record `was_fallback` at write time
 
 Today the "used a fallback" note is derived by comparing a stored
 provider against the *current* chain, so it lies after any reorder. The
@@ -228,12 +317,24 @@ Recorded so they are not proposed again without reading the reasoning.
 
 1. **Today's date in the prompt** — minutes, closes a known defect
 2. **Evaluation harness** — without it, every change below is unfalsifiable
-3. **Evidence quotes on must-have verdicts** — attacks the one open model limitation
-4. **Screening out of the request** — the gap between a demo and a dependency
-5. **Location scoring in code** (Proposal B2) — cheaper, deterministic
-6. **Split verdicts from scores** (Proposal B1) — only once the harness can prove it helped
-7. **Credential/tool dictionary** (Proposal A, narrowed) — same caveat
+3. **Hand-written scoring anchors** (Proposal C2, cheap version) — the
+   cheapest attack on run-to-run variance; needs no data
+4. **Evidence quotes on must-have verdicts** — attacks the one open model limitation
+5. **Screening out of the request** — the gap between a demo and a dependency
+6. **Location scoring in code** (Proposal B2) — cheaper, deterministic
+7. **Rated examples as calibration** (Proposal C2, full version) — once
+   there is rated data and a harness to prove it helped
+8. **Split verdicts from scores** (Proposal B1) — same caveat
+9. **Credential/tool dictionary** (Proposal A, narrowed) — same caveat
 
 **The one-line version:** the cheapest fix on this list closes a real
-bug today, and the second item is what makes every remaining item
-measurable rather than hopeful.
+bug today, the second makes every remaining item measurable rather than
+hopeful, and the third is probably the largest accuracy gain per hour
+of work — none of which are the two changes originally proposed.
+
+**Note on where the proposals landed.** Proposal A was the wrong size
+for the problem it named. Proposal B was aimed at a part of the system
+that is not demonstrably broken. **Proposal C was the strongest of the
+three** and produced items 3 and 7. Recording that is the point of this
+document: the value was in checking each against an observed failure,
+not in accepting or rejecting them wholesale.
